@@ -1,53 +1,61 @@
-import { create } from 'zustand'
-import { getCookie, setCookie, removeCookie } from '@/lib/cookies'
-
-const ACCESS_TOKEN = 'thisisjustarandomstring'
+import { create } from 'zustand';
 
 interface AuthUser {
-  accountNo: string
-  email: string
-  role: string[]
-  exp: number
+  id: number;
+  name: string;
+  email: string;
+  roles: string[];
 }
 
 interface AuthState {
   auth: {
-    user: AuthUser | null
-    setUser: (user: AuthUser | null) => void
-    accessToken: string
-    setAccessToken: (accessToken: string) => void
-    resetAccessToken: () => void
-    reset: () => void
-  }
+    user: AuthUser | null;
+    setUser: (user: AuthUser | null) => void;
+    accessToken: string;
+    setAccessToken: (accessToken: string) => void;
+    reset: () => void;
+  };
 }
 
-export const useAuthStore = create<AuthState>()((set) => {
-  const cookieState = getCookie(ACCESS_TOKEN)
-  const initToken = cookieState ? JSON.parse(cookieState) : ''
-  return {
-    auth: {
-      user: null,
-      setUser: (user) =>
-        set((state) => ({ ...state, auth: { ...state.auth, user } })),
-      accessToken: initToken,
-      setAccessToken: (accessToken) =>
-        set((state) => {
-          setCookie(ACCESS_TOKEN, JSON.stringify(accessToken))
-          return { ...state, auth: { ...state.auth, accessToken } }
-        }),
-      resetAccessToken: () =>
-        set((state) => {
-          removeCookie(ACCESS_TOKEN)
-          return { ...state, auth: { ...state.auth, accessToken: '' } }
-        }),
-      reset: () =>
-        set((state) => {
-          removeCookie(ACCESS_TOKEN)
-          return {
-            ...state,
-            auth: { ...state.auth, user: null, accessToken: '' },
-          }
-        }),
-    },
-  }
-})
+const getStoredUser = (): AuthUser | null => {
+  const user = localStorage.getItem('user');
+  return user ? JSON.parse(user) : null;
+};
+
+const getStoredToken = (): string => {
+  return localStorage.getItem('token') || '';
+};
+
+export const useAuthStore = create<AuthState>()((set) => ({
+  auth: {
+    user: getStoredUser(),
+    setUser: (user) =>
+      set((state) => {
+        if (user) {
+          localStorage.setItem('user', JSON.stringify(user));
+        } else {
+          localStorage.removeItem('user');
+        }
+        return { ...state, auth: { ...state.auth, user } };
+      }),
+    accessToken: getStoredToken(),
+    setAccessToken: (accessToken) =>
+      set((state) => {
+        if (accessToken) {
+          localStorage.setItem('token', accessToken);
+        } else {
+          localStorage.removeItem('token');
+        }
+        return { ...state, auth: { ...state.auth, accessToken } };
+      }),
+    reset: () =>
+      set((state) => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        return {
+          ...state,
+          auth: { ...state.auth, user: null, accessToken: '' },
+        };
+      }),
+  },
+}));

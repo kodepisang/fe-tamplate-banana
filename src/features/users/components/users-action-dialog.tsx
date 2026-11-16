@@ -3,7 +3,8 @@
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { showSubmittedData } from '@/lib/show-submitted-data'
+
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -23,61 +24,62 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/password-input'
-import { SelectDropdown } from '@/components/select-dropdown'
-import { roles } from '../data/data'
+import Select from 'react-select'
+import { useEffect, useState } from 'react';
+import api from '@/lib/api';
 import { type User } from '../data/schema'
 
 const formSchema = z
   .object({
-    firstName: z.string().min(1, 'First Name is required.'),
-    lastName: z.string().min(1, 'Last Name is required.'),
-    username: z.string().min(1, 'Username is required.'),
-    phoneNumber: z.string().min(1, 'Phone number is required.'),
+    firstName: z.string().min(1, 'Nama Depan wajib diisi.'),
+    lastName: z.string().min(1, 'Nama Belakang wajib diisi.'),
+    username: z.string().optional(),
+    phoneNumber: z.string().optional(),
     email: z.email({
-      error: (iss) => (iss.input === '' ? 'Email is required.' : undefined),
+      message: 'Email wajib diisi.',
     }),
-    password: z.string().transform((pwd) => pwd.trim()),
-    role: z.string().min(1, 'Role is required.'),
-    confirmPassword: z.string().transform((pwd) => pwd.trim()),
+    password: z.string().optional(),
+    role: z.array(z.string()).min(1, 'Role wajib diisi.'),
+    confirmPassword: z.string().optional(),
     isEdit: z.boolean(),
   })
   .refine(
     (data) => {
       if (data.isEdit && !data.password) return true
-      return data.password.length > 0
+      return !!data.password && data.password.length > 0
     },
     {
-      message: 'Password is required.',
+      message: 'Password wajib diisi.',
       path: ['password'],
     }
   )
   .refine(
     ({ isEdit, password }) => {
       if (isEdit && !password) return true
-      return password.length >= 8
+      return !!password && password.length >= 8
     },
     {
-      message: 'Password must be at least 8 characters long.',
+      message: 'Password minimal 8 karakter.',
       path: ['password'],
     }
   )
   .refine(
     ({ isEdit, password }) => {
       if (isEdit && !password) return true
-      return /[a-z]/.test(password)
+      return /[a-z]/.test(password || '')
     },
     {
-      message: 'Password must contain at least one lowercase letter.',
+      message: 'Password harus mengandung huruf kecil.',
       path: ['password'],
     }
   )
   .refine(
     ({ isEdit, password }) => {
       if (isEdit && !password) return true
-      return /\d/.test(password)
+      return /\d/.test(password || '')
     },
     {
-      message: 'Password must contain at least one number.',
+      message: 'Password harus mengandung angka.',
       path: ['password'],
     }
   )
@@ -87,29 +89,50 @@ const formSchema = z
       return password === confirmPassword
     },
     {
-      message: "Passwords don't match.",
+      message: "Password tidak cocok.",
       path: ['confirmPassword'],
     }
   )
 type UserForm = z.infer<typeof formSchema>
 
-type UserActionDialogProps = {
-  currentRow?: User
+interface Props {
+  currentRow?: User | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  onRefresh?: () => void
 }
 
 export function UsersActionDialog({
   currentRow,
   open,
   onOpenChange,
-}: UserActionDialogProps) {
+  onRefresh,
+}: Props) {
   const isEdit = !!currentRow
+  const [dynamicRoles, setDynamicRoles] = useState<{label: string, value: string}[]>([])
+
+  useEffect(() => {
+    async function fetchRoles() {
+      try {
+        const res = await api.get('/roles')
+        setDynamicRoles(res.data.data.map((r: { name: string }) => ({ label: r.name, value: r.name })))
+      } catch (_err) {
+        // console.error('Failed to fetch roles')
+      }
+    }
+    fetchRoles()
+  }, [])
+
   const form = useForm<UserForm>({
     resolver: zodResolver(formSchema),
-    defaultValues: isEdit
+    defaultValues: isEdit && currentRow
       ? {
-          ...currentRow,
+          firstName: currentRow.firstName,
+          lastName: currentRow.lastName,
+          username: currentRow.username,
+          phoneNumber: currentRow.phoneNumber,
+          email: currentRow.email,
+          role: currentRow.role ? currentRow.role.split(', ') : [],
           password: '',
           confirmPassword: '',
           isEdit,
@@ -119,7 +142,7 @@ export function UsersActionDialog({
           lastName: '',
           username: '',
           email: '',
-          role: '',
+          role: [],
           phoneNumber: '',
           password: '',
           confirmPassword: '',
@@ -127,10 +150,34 @@ export function UsersActionDialog({
         },
   })
 
-  const onSubmit = (values: UserForm) => {
-    form.reset()
-    showSubmittedData(values)
-    onOpenChange(false)
+  const onSubmit = async (values: UserForm) => {
+    try {
+      const payload: Record<string, unknown> = {
+        name: `${values.firstName} ${values.lastName}`.trim(),
+        username: values.username ? values.username.trim().toLowerCase() : values.email.split('@')[0].toLowerCase(),
+        email: values.email,
+        roles: values.role, // values.role is now an array of strings
+      }
+      if (values.phoneNumber) {
+        payload.profile = { phone: values.phoneNumber.trim() }
+      }
+      if (values.password) {
+        payload.password = values.password
+      }
+      if (isEdit && currentRow) {
+        await api.put(`/users/${currentRow.id}`, payload)
+      } else {
+        await api.post('/users', payload)
+        toast.success('Pengguna berhasil dibuat.')
+      }
+      if (onRefresh) onRefresh()
+      form.reset()
+      onOpenChange(false)
+      // Ideally, trigger a refresh of the users list here
+    } catch (_err) {
+      // console.error(err)
+      toast.error('Gagal menyimpan pengguna')
+    }
   }
 
   const isPasswordTouched = !!form.formState.dirtyFields.password
@@ -145,10 +192,10 @@ export function UsersActionDialog({
     >
       <DialogContent className='sm:max-w-lg'>
         <DialogHeader className='text-start'>
-          <DialogTitle>{isEdit ? 'Edit User' : 'Add New User'}</DialogTitle>
+          <DialogTitle>{isEdit ? 'Edit Pengguna' : 'Tambah Pengguna Baru'}</DialogTitle>
           <DialogDescription>
-            {isEdit ? 'Update the user here. ' : 'Create new user here. '}
-            Click save when you&apos;re done.
+            {isEdit ? 'Ubah data pengguna di sini. ' : 'Buat pengguna baru di sini. '}
+            Klik simpan jika sudah selesai.
           </DialogDescription>
         </DialogHeader>
         <div className='h-105 w-[calc(100%+0.75rem)] overflow-y-auto py-1 pe-3'>
@@ -164,11 +211,11 @@ export function UsersActionDialog({
                 render={({ field }) => (
                   <FormItem className='grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1'>
                     <FormLabel className='col-span-2 text-end'>
-                      First Name
+                      Nama Depan
                     </FormLabel>
                     <FormControl>
                       <Input
-                        placeholder='John'
+                        placeholder='Budi'
                         className='col-span-4'
                         autoComplete='off'
                         {...field}
@@ -184,11 +231,11 @@ export function UsersActionDialog({
                 render={({ field }) => (
                   <FormItem className='grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1'>
                     <FormLabel className='col-span-2 text-end'>
-                      Last Name
+                      Nama Belakang
                     </FormLabel>
                     <FormControl>
                       <Input
-                        placeholder='Doe'
+                        placeholder='Santoso'
                         className='col-span-4'
                         autoComplete='off'
                         {...field}
@@ -240,7 +287,7 @@ export function UsersActionDialog({
                 render={({ field }) => (
                   <FormItem className='grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1'>
                     <FormLabel className='col-span-2 text-end'>
-                      Phone Number
+                      Nomor Telepon
                     </FormLabel>
                     <FormControl>
                       <Input
@@ -259,15 +306,15 @@ export function UsersActionDialog({
                 render={({ field }) => (
                   <FormItem className='grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1'>
                     <FormLabel className='col-span-2 text-end'>Role</FormLabel>
-                    <SelectDropdown
-                      defaultValue={field.value}
-                      onValueChange={field.onChange}
-                      placeholder='Select a role'
+                    <Select
+                      isMulti
+                      options={dynamicRoles}
+                      value={dynamicRoles.filter(r => field.value?.includes(r.value))}
+                      onChange={(selectedOptions) => {
+                        field.onChange(selectedOptions.map((opt: { value: string }) => opt.value))
+                      }}
                       className='col-span-4'
-                      items={roles.map(({ label, value }) => ({
-                        label,
-                        value,
-                      }))}
+                      styles={{ menu: (provided) => ({ ...provided, zIndex: 9999 }) }}
                     />
                     <FormMessage className='col-span-4 col-start-3' />
                   </FormItem>
@@ -298,7 +345,7 @@ export function UsersActionDialog({
                 render={({ field }) => (
                   <FormItem className='grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1'>
                     <FormLabel className='col-span-2 text-end'>
-                      Confirm Password
+                      Konfirmasi Password
                     </FormLabel>
                     <FormControl>
                       <PasswordInput
@@ -317,7 +364,7 @@ export function UsersActionDialog({
         </div>
         <DialogFooter>
           <Button type='submit' form='user-form'>
-            Save changes
+            Simpan perubahan
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,51 +1,41 @@
 'use client'
 
-import { useState } from 'react'
 import { type Table } from '@tanstack/react-table'
 import { AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
-import { sleep } from '@/lib/utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import api from '@/lib/api'
+import { type User } from '../data/schema'
 
 type UserMultiDeleteDialogProps<TData> = {
   open: boolean
   onOpenChange: (open: boolean) => void
   table: Table<TData>
+  onRefresh?: () => void
 }
-
-const CONFIRM_WORD = 'DELETE'
 
 export function UsersMultiDeleteDialog<TData>({
   open,
   onOpenChange,
   table,
+  onRefresh,
 }: UserMultiDeleteDialogProps<TData>) {
-  const [value, setValue] = useState('')
-
   const selectedRows = table.getFilteredSelectedRowModel().rows
 
-  const handleDelete = () => {
-    if (value.trim() !== CONFIRM_WORD) {
-      toast.error(`Please type "${CONFIRM_WORD}" to confirm.`)
-      return
+  const handleDelete = async () => {
+    try {
+      await Promise.all(
+        selectedRows.map((row) => api.delete(`/users/${(row.original as User).id}`))
+      )
+      toast.success(`Berhasil menghapus ${selectedRows.length} pengguna.`)
+      table.resetRowSelection()
+      if (onRefresh) onRefresh()
+      onOpenChange(false)
+    } catch (_err) {
+      // console.error(err)
+      toast.error('Gagal menghapus beberapa pengguna.')
     }
-
-    onOpenChange(false)
-
-    toast.promise(sleep(2000), {
-      loading: 'Deleting users...',
-      success: () => {
-        setValue('')
-        table.resetRowSelection()
-        return `Deleted ${selectedRows.length} ${
-          selectedRows.length > 1 ? 'users' : 'user'
-        }`
-      },
-      error: 'Error',
-    })
   }
 
   return (
@@ -53,7 +43,6 @@ export function UsersMultiDeleteDialog<TData>({
       open={open}
       onOpenChange={onOpenChange}
       form='users-multi-delete-form'
-      disabled={value.trim() !== CONFIRM_WORD}
       title={
         <span className='text-destructive'>
           <AlertTriangle
@@ -78,15 +67,7 @@ export function UsersMultiDeleteDialog<TData>({
             This action cannot be undone.
           </p>
 
-          <Label className='my-4 flex flex-col items-start gap-1.5'>
-            <span className=''>Confirm by typing "{CONFIRM_WORD}":</span>
-            <Input
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder={`Type "${CONFIRM_WORD}" to confirm.`}
-              autoFocus
-            />
-          </Label>
+
 
           <Alert variant='destructive'>
             <AlertTitle>Warning!</AlertTitle>

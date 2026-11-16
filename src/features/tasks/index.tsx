@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { ConfigDrawer } from '@/components/config-drawer'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
@@ -8,9 +9,45 @@ import { TasksDialogs } from './components/tasks-dialogs'
 import { TasksPrimaryButtons } from './components/tasks-primary-buttons'
 import { TasksProvider } from './components/tasks-provider'
 import { TasksTable } from './components/tasks-table'
-import { tasks } from './data/tasks'
+import { type Task } from './data/schema'
+import api from '@/lib/api'
 
 export function Tasks() {
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const fetchTasks = async () => {
+    try {
+      const res = await api.get('/tasks')
+      if (res.data.success) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mappedTasks = res.data.data.map((t: any) => ({
+          id: `TASK-${t.id}`,
+          title: t.title,
+          status: t.status.toLowerCase(),
+          label: 'feature',
+          priority: 'medium',
+          createdAt: new Date(t.createdAt),
+          updatedAt: new Date(t.updatedAt),
+          assignee: t.userId ? String(t.userId) : 'Unassigned',
+          description: t.description || '',
+          dueDate: t.dueDate ? new Date(t.dueDate) : null,
+          dbId: t.id,
+        }))
+        setTasks(mappedTasks)
+      }
+    } catch (_error) {
+      // console.error(error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchTasks()
+  }, [])
+
   return (
     <TasksProvider>
       <Header fixed>
@@ -30,10 +67,14 @@ export function Tasks() {
           </div>
           <TasksPrimaryButtons />
         </div>
-        <TasksTable data={tasks} />
+        {loading ? (
+          <div>Loading tasks...</div>
+        ) : (
+          <TasksTable data={tasks} onRefresh={fetchTasks} />
+        )}
       </Main>
 
-      <TasksDialogs />
+      <TasksDialogs fetchTasks={fetchTasks} />
     </TasksProvider>
   )
 }

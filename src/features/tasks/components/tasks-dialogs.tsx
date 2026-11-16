@@ -1,10 +1,10 @@
-import { showSubmittedData } from '@/lib/show-submitted-data'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { TasksImportDialog } from './tasks-import-dialog'
 import { TasksMutateDrawer } from './tasks-mutate-drawer'
 import { useTasks } from './tasks-provider'
+import api from '@/lib/api'
 
-export function TasksDialogs() {
+export function TasksDialogs({ fetchTasks }: { fetchTasks?: () => void }) {
   const { open, setOpen, currentRow, setCurrentRow } = useTasks()
   return (
     <>
@@ -12,6 +12,7 @@ export function TasksDialogs() {
         key='task-create'
         open={open === 'create'}
         onOpenChange={() => setOpen('create')}
+        fetchTasks={fetchTasks}
       />
 
       <TasksImportDialog
@@ -32,6 +33,7 @@ export function TasksDialogs() {
               }, 500)
             }}
             currentRow={currentRow}
+            fetchTasks={fetchTasks}
           />
 
           <ConfirmDialog
@@ -44,15 +46,19 @@ export function TasksDialogs() {
                 setCurrentRow(null)
               }, 500)
             }}
-            handleConfirm={() => {
+            handleConfirm={async () => {
+              try {
+                if (currentRow.dbId) {
+                  await api.delete(`/tasks/${currentRow.dbId}`)
+                  if (fetchTasks) fetchTasks()
+                }
+              } catch (_error) {
+                // handle silently or with toast if toast is available
+              }
               setOpen(null)
               setTimeout(() => {
                 setCurrentRow(null)
               }, 500)
-              showSubmittedData(
-                currentRow,
-                'The following task has been deleted:'
-              )
             }}
             className='max-w-md'
             title={`Delete this task: ${currentRow.id} ?`}

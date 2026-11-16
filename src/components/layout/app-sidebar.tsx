@@ -12,8 +12,30 @@ import { NavGroup } from './nav-group'
 import { NavUser } from './nav-user'
 import { TeamSwitcher } from './team-switcher'
 
+import { useAuthStore } from '@/stores/auth-store'
+
 export function AppSidebar() {
   const { collapsible, variant } = useLayout()
+  const user = useAuthStore((state) => state.auth.user)
+  const userRoles = user?.roles || ['GUEST']
+
+  const filteredNavGroups = sidebarData.navGroups
+    .map((group) => {
+      const filteredItems = group.items.filter((item) => {
+        if (!item.roles) return true
+        return item.roles.some((role) => userRoles.includes(role))
+      })
+      return { ...group, items: filteredItems }
+    })
+    .filter((group) => group.items.length > 0)
+
+  // Use dynamic user data for the footer if available
+  const sidebarUser = user ? {
+    name: user.name,
+    email: user.email,
+    avatar: '/avatars/shadcn.jpg',
+  } : sidebarData.user;
+
   return (
     <Sidebar collapsible={collapsible} variant={variant}>
       <SidebarHeader>
@@ -24,12 +46,12 @@ export function AppSidebar() {
         {/* <AppTitle /> */}
       </SidebarHeader>
       <SidebarContent>
-        {sidebarData.navGroups.map((props) => (
+        {filteredNavGroups.map((props) => (
           <NavGroup key={props.title} {...props} />
         ))}
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={sidebarData.user} />
+        <NavUser user={sidebarUser} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

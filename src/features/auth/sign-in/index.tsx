@@ -1,4 +1,4 @@
-import { Link, useSearch } from '@tanstack/react-router'
+import { useSearch } from '@tanstack/react-router'
 import {
   Card,
   CardContent,
@@ -15,41 +15,21 @@ export function SignIn() {
 
   return (
     <AuthLayout>
-      <Card className='max-w-sm gap-4'>
-        <CardHeader>
-          <CardTitle className='text-lg tracking-tight'>Sign in</CardTitle>
-          <CardDescription>
-            Enter your email and password below to log into{' '}
-            <br className='max-sm:hidden' /> your account. Don't have an
-            account?{' '}
-            <Link
-              to='/sign-up'
-              className='text-nowrap underline underline-offset-4 hover:text-primary'
-            >
-              Sign Up
-            </Link>
+      <Card className='w-full max-w-md shadow-xl border-border/80 bg-card/95 backdrop-blur-md rounded-2xl transition-all duration-300 hover:shadow-2xl'>
+        <CardHeader className='space-y-1.5 text-center pb-4'>
+          <CardTitle className='text-xl font-bold tracking-tight text-foreground'>
+            Masuk Akun
+          </CardTitle>
+          <CardDescription className='text-xs text-muted-foreground'>
+            Silakan masukkan username atau email dan password Anda untuk mengakses sistem presensi sekolah.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className='pt-2'>
           <UserAuthForm redirectTo={redirect} />
         </CardContent>
-        <CardFooter>
-          <p className='px-8 text-center text-sm text-muted-foreground'>
-            By clicking sign in, you agree to our{' '}
-            <a
-              href='/terms'
-              className='underline underline-offset-4 hover:text-primary'
-            >
-              Terms of Service
-            </a>{' '}
-            and{' '}
-            <a
-              href='/privacy'
-              className='underline underline-offset-4 hover:text-primary'
-            >
-              Privacy Policy
-            </a>
-            .
+        <CardFooter className='pt-4 pb-6 flex justify-center border-t border-border/40 mt-2'>
+          <p className='text-center text-xs font-medium text-muted-foreground/80 tracking-wide'>
+            © {new Date().getFullYear()} SMK Islam Sultan Agung Kalinyamatan Jepara
           </p>
         </CardFooter>
       </Card>

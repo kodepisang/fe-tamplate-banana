@@ -3,9 +3,9 @@ import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowRight, Loader2 } from 'lucide-react'
+import { Loader2, MessageSquare } from 'lucide-react'
 import { toast } from 'sonner'
-import { sleep, cn } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -18,9 +18,10 @@ import {
 import { Input } from '@/components/ui/input'
 
 const formSchema = z.object({
-  email: z.email({
-    error: (iss) => (iss.input === '' ? 'Please enter your email.' : undefined),
-  }),
+  phone: z
+    .string()
+    .min(1, 'Masukkan nomor WhatsApp terdaftar.')
+    .min(8, 'Nomor WhatsApp minimal 8 digit.'),
 })
 
 export function ForgotPasswordForm({
@@ -32,47 +33,82 @@ export function ForgotPasswordForm({
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: { email: '' },
+    defaultValues: { phone: '' },
   })
 
-  function onSubmit(data: z.infer<typeof formSchema>) {
+  async function onSubmit(data: z.infer<typeof formSchema>) {
     setIsLoading(true)
 
-    toast.promise(sleep(2000), {
-      loading: 'Sending email...',
-      success: () => {
-        setIsLoading(false)
+    try {
+      const api = (await import('@/lib/api')).default
+      const response = await api.post('/auth/forgot-password', {
+        phone: data.phone,
+      })
+
+      if (response.data.success) {
+        toast.success(
+          response.data.message ||
+            'Password baru telah berhasil dikirim ke WhatsApp Anda!'
+        )
         form.reset()
-        navigate({ to: '/otp' })
-        return `Email sent to ${data.email}`
-      },
-      error: 'Error',
-    })
+        navigate({ to: '/sign-in' })
+      } else {
+        toast.error(response.data.message || 'Gagal mereset password.')
+      }
+    } catch (error) {
+      const err = error as Error & {
+        response?: { data?: { message?: string } }
+      }
+      const msg =
+        err.response?.data?.message ||
+        err.message ||
+        'Terjadi kesalahan saat memproses reset password.'
+      
+      if (msg.includes('gangguan')) {
+        toast.error('WhatsApp sedang gangguan', {
+          description: 'Sistem pengiriman WhatsApp tidak dapat dijangkau. Silakan hubungi pihak sekolah/Admin.',
+        })
+      } else {
+        toast.error(msg)
+      }
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
-        className={cn('grid gap-2', className)}
+        className={cn('grid gap-3', className)}
         {...props}
       >
         <FormField
           control={form.control}
-          name='email'
+          name='phone'
           render={({ field }) => (
-            <FormItem>
-              <FormLabel>Email</FormLabel>
+            <FormItem className='space-y-1.5'>
+              <FormLabel className='text-xs font-semibold text-foreground/80'>
+                Nomor WhatsApp Terdaftar
+              </FormLabel>
               <FormControl>
-                <Input placeholder='name@example.com' {...field} />
+                <Input
+                  placeholder='Contoh: 081234567890 atau 628123456789'
+                  className='h-10 text-sm bg-background/50 focus-visible:ring-1'
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
-        <Button className='mt-2' disabled={isLoading}>
-          Continue
-          {isLoading ? <Loader2 className='animate-spin' /> : <ArrowRight />}
+        <Button className='mt-2 h-10 font-semibold text-sm shadow-md' disabled={isLoading}>
+          {isLoading ? (
+            <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+          ) : (
+            <MessageSquare className='mr-2 h-4 w-4' />
+          )}
+          {isLoading ? 'Mengirim Password...' : 'Kirim Password via WhatsApp'}
         </Button>
       </form>
     </Form>

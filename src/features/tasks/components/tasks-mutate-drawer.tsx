@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { showSubmittedData } from '@/lib/show-submitted-data'
+import api from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -24,11 +24,13 @@ import {
 } from '@/components/ui/sheet'
 import { SelectDropdown } from '@/components/select-dropdown'
 import { type Task } from '../data/schema'
+import { toast } from 'sonner'
 
 type TaskMutateDrawerProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   currentRow?: Task
+  fetchTasks?: () => void
 }
 
 const formSchema = z.object({
@@ -43,6 +45,7 @@ export function TasksMutateDrawer({
   open,
   onOpenChange,
   currentRow,
+  fetchTasks,
 }: TaskMutateDrawerProps) {
   const isUpdate = !!currentRow
 
@@ -51,16 +54,26 @@ export function TasksMutateDrawer({
     defaultValues: currentRow ?? {
       title: '',
       status: '',
-      label: '',
-      priority: '',
+      label: 'feature',
+      priority: 'medium',
     },
   })
 
-  const onSubmit = (data: TaskForm) => {
-    // do something with the form data
-    onOpenChange(false)
-    form.reset()
-    showSubmittedData(data)
+  const onSubmit = async (data: TaskForm) => {
+    try {
+      if (isUpdate && currentRow.dbId) {
+        await api.put(`/tasks/${currentRow.dbId}`, data)
+        toast.success('Task updated successfully')
+      } else {
+        await api.post('/tasks', data)
+        toast.success('Task created successfully')
+      }
+      onOpenChange(false)
+      form.reset()
+      if (fetchTasks) fetchTasks()
+    } catch (_error) {
+      toast.error('Failed to save task')
+    }
   }
 
   return (

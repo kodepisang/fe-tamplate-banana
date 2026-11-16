@@ -1,204 +1,147 @@
 import {
-  Construction,
   LayoutDashboard,
-  Monitor,
-  Bug,
-  ListTodo,
-  FileX,
-  HelpCircle,
-  Lock,
-  Bell,
-  Package,
-  Palette,
-  ServerOff,
-  Settings,
-  Wrench,
-  UserCog,
-  UserX,
   Users,
-  MessagesSquare,
-  ShieldCheck,
-  AudioWaveform,
-  Command,
-  GalleryVerticalEnd,
+  Settings,
+  CheckSquare,
+  FileSpreadsheet,
+  BookOpen,
+  School,
+  Calendar,
+  CalendarCheck
 } from 'lucide-react'
-import { ClerkLogo } from '@/assets/clerk-logo'
 import { type SidebarData } from '../types'
 
 export const sidebarData: SidebarData = {
   user: {
-    name: 'satnaing',
-    email: 'satnaingdev@gmail.com',
+    name: 'User',
+    email: 'user@example.com',
     avatar: '/avatars/shadcn.jpg',
   },
   teams: [
     {
-      name: 'Shadcn Admin',
-      logo: Command,
-      plan: 'Vite + ShadcnUI',
-    },
-    {
-      name: 'Acme Inc',
-      logo: GalleryVerticalEnd,
-      plan: 'Enterprise',
-    },
-    {
-      name: 'Acme Corp.',
-      logo: AudioWaveform,
-      plan: 'Startup',
-    },
+      name: 'Sekolah App',
+      logo: School,
+      plan: 'Attendance System',
+    }
   ],
   navGroups: [
     {
-      title: 'General',
+      title: 'Menu Utama',
       items: [
         {
-          title: 'Dashboard',
+          title: 'Dasbor',
           url: '/',
           icon: LayoutDashboard,
         },
         {
-          title: 'Tasks',
-          url: '/tasks',
-          icon: ListTodo,
+          title: 'Input Kehadiran',
+          url: '/attendance/input',
+          icon: CheckSquare,
+          roles: ['ADMINISTRATOR', 'GURU_MAPEL', 'GURU_WALI_KELAS'],
         },
         {
-          title: 'Apps',
-          url: '/apps',
-          icon: Package,
+          title: 'Laporan Kehadiran',
+          url: '/reports',
+          icon: FileSpreadsheet,
+          roles: ['ADMINISTRATOR', 'KEPALA_SEKOLAH', 'GURU_BK'],
         },
+      ],
+    },
+    {
+      title: 'Data Master',
+      items: [
         {
-          title: 'Chats',
-          url: '/chats',
-          badge: '3',
-          icon: MessagesSquare,
-        },
-        {
-          title: 'Users',
+          title: 'Manajemen Pengguna',
           url: '/users',
           icon: Users,
+          roles: ['ADMINISTRATOR', 'TU'],
         },
         {
-          title: 'Secured by Clerk',
-          icon: ClerkLogo,
-          items: [
-            {
-              title: 'Sign In',
-              url: '/clerk/sign-in',
-            },
-            {
-              title: 'Sign Up',
-              url: '/clerk/sign-up',
-            },
-            {
-              title: 'User Management',
-              url: '/clerk/user-management',
-            },
-          ],
-        },
-      ],
-    },
-    {
-      title: 'Pages',
-      items: [
-        {
-          title: 'Auth',
-          icon: ShieldCheck,
-          items: [
-            {
-              title: 'Sign In',
-              url: '/sign-in',
-            },
-            {
-              title: 'Sign In (2 Col)',
-              url: '/sign-in-2',
-            },
-            {
-              title: 'Sign Up',
-              url: '/sign-up',
-            },
-            {
-              title: 'Forgot Password',
-              url: '/forgot-password',
-            },
-            {
-              title: 'OTP',
-              url: '/otp',
-            },
-          ],
-        },
-        {
-          title: 'Errors',
-          icon: Bug,
-          items: [
-            {
-              title: 'Unauthorized',
-              url: '/errors/unauthorized',
-              icon: Lock,
-            },
-            {
-              title: 'Forbidden',
-              url: '/errors/forbidden',
-              icon: UserX,
-            },
-            {
-              title: 'Not Found',
-              url: '/errors/not-found',
-              icon: FileX,
-            },
-            {
-              title: 'Internal Server Error',
-              url: '/errors/internal-server-error',
-              icon: ServerOff,
-            },
-            {
-              title: 'Maintenance Error',
-              url: '/errors/maintenance-error',
-              icon: Construction,
-            },
-          ],
-        },
-      ],
-    },
-    {
-      title: 'Other',
-      items: [
-        {
-          title: 'Settings',
+          title: 'Manajemen Role',
+          url: '/roles',
           icon: Settings,
-          items: [
-            {
-              title: 'Profile',
-              url: '/settings',
-              icon: UserCog,
-            },
-            {
-              title: 'Account',
-              url: '/settings/account',
-              icon: Wrench,
-            },
-            {
-              title: 'Appearance',
-              url: '/settings/appearance',
-              icon: Palette,
-            },
-            {
-              title: 'Notifications',
-              url: '/settings/notifications',
-              icon: Bell,
-            },
-            {
-              title: 'Display',
-              url: '/settings/display',
-              icon: Monitor,
-            },
-          ],
+          roles: ['ADMINISTRATOR'],
         },
         {
-          title: 'Help Center',
-          url: '/help-center',
-          icon: HelpCircle,
+          title: 'Data Siswa',
+          url: '/students',
+          icon: Users,
+          roles: ['ADMINISTRATOR', 'TU'],
         },
+        {
+          title: 'Data Guru',
+          url: '/teachers',
+          icon: Users,
+          roles: ['ADMINISTRATOR', 'TU'],
+        },
+        {
+          title: 'Data Kelas',
+          url: '/classes',
+          icon: School,
+          roles: ['ADMINISTRATOR', 'TU'],
+        },
+        {
+          title: 'Tahun Akademik',
+          url: '/academic-years',
+          icon: Calendar,
+          roles: ['ADMINISTRATOR', 'TU'],
+        },
+        {
+          title: 'Data Mata Pelajaran',
+          url: '/subjects',
+          icon: BookOpen,
+          roles: ['ADMINISTRATOR', 'TU'],
+        },
+        {
+          title: 'Upload Data',
+          url: '/import',
+          icon: FileSpreadsheet,
+          roles: ['ADMINISTRATOR', 'TU'],
+        },
+        {
+          title: 'Kegiatan & Event',
+          url: '/events',
+          icon: Calendar,
+          roles: ['ADMINISTRATOR', 'TU', 'GURU_MAPEL', 'GURU_BK'],
+        }
+      ],
+    },
+    {
+      title: 'Lainnya',
+      items: [
+        {
+          title: 'Log Absensi Gerbang',
+          url: '/gate-attendance',
+          icon: CheckSquare,
+        },
+        {
+          title: 'Log Kehadiran Kegiatan',
+          url: '/event-attendance',
+          icon: CalendarCheck,
+          roles: ['ADMINISTRATOR', 'TU', 'GURU_MAPEL', 'GURU_BK', 'KEPALA_SEKOLAH', 'GURU_WALI_KELAS'],
+        },
+        {
+          title: 'Kiosk Tap Kegiatan',
+          url: '/event-kiosk',
+          icon: CheckSquare,
+        },
+        {
+          title: 'Konfigurasi Jam Absensi',
+          url: '/attendance-settings',
+          icon: Calendar,
+          roles: ['ADMINISTRATOR', 'TU'],
+        },
+        {
+          title: 'Kalender Absensi',
+          url: '/calendar-settings',
+          icon: Calendar,
+          roles: ['ADMINISTRATOR', 'TU'],
+        },
+        {
+          title: 'Pengaturan',
+          url: '/settings',
+          icon: Settings,
+        }
       ],
     },
   ],

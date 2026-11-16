@@ -12,7 +12,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table'
 import { cn } from '@/lib/utils'
-import { type NavigateFn, useTableUrlState } from '@/hooks/use-table-url-state'
+import { useTableUrlState } from '@/hooks/use-table-url-state'
 import {
   Table,
   TableBody,
@@ -22,22 +22,38 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { DataTablePagination, DataTableToolbar } from '@/components/data-table'
-import { roles } from '../data/data'
+import api from '@/lib/api'
 import { type User } from '../data/schema'
 import { DataTableBulkActions } from './data-table-bulk-actions'
 import { usersColumns as columns } from './users-columns'
 
-type DataTableProps = {
+interface DataTableProps {
   data: User[]
-  search: Record<string, unknown>
-  navigate: NavigateFn
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  search: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  navigate: any
+  onRefresh?: () => void
 }
 
-export function UsersTable({ data, search, navigate }: DataTableProps) {
+export function UsersTable({ data, search, navigate, onRefresh }: DataTableProps) {
   // Local UI-only states
   const [rowSelection, setRowSelection] = useState({})
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
   const [sorting, setSorting] = useState<SortingState>([])
+  const [dynamicRoles, setDynamicRoles] = useState<{label: string, value: string}[]>([])
+
+  useEffect(() => {
+    async function fetchRoles() {
+      try {
+        const res = await api.get('/roles')
+        setDynamicRoles(res.data.data.map((r: { name: string }) => ({ label: r.name, value: r.name })))
+      } catch (_err) {
+        // console.error('Failed to fetch roles')
+      }
+    }
+    fetchRoles()
+  }, [])
 
   // Local state management for table (uncomment to use local-only state, not synced with URL)
   // const [columnFilters, onColumnFiltersChange] = useState<ColumnFiltersState>([])
@@ -63,6 +79,7 @@ export function UsersTable({ data, search, navigate }: DataTableProps) {
     ],
   })
 
+   
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data,
@@ -117,7 +134,7 @@ export function UsersTable({ data, search, navigate }: DataTableProps) {
           {
             columnId: 'role',
             title: 'Role',
-            options: roles.map((role) => ({ ...role })),
+            options: dynamicRoles,
           },
         ]}
       />
@@ -188,7 +205,7 @@ export function UsersTable({ data, search, navigate }: DataTableProps) {
         </Table>
       </div>
       <DataTablePagination table={table} className='mt-auto' />
-      <DataTableBulkActions table={table} />
+      <DataTableBulkActions table={table} onRefresh={onRefresh} />
     </div>
   )
 }

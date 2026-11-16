@@ -32,6 +32,15 @@ export const tasksColumns: ColumnDef<Task>[] = [
     enableHiding: false,
   },
   {
+    id: 'index',
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title='No.' />
+    ),
+    cell: ({ row }) => <div className='ps-2 w-8'>{row.index + 1}</div>,
+    enableSorting: false,
+    enableHiding: false,
+  },
+  {
     accessorKey: 'id',
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title='Task' />

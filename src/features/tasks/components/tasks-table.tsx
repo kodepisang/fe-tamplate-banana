@@ -30,11 +30,12 @@ import { tasksColumns as columns } from './tasks-columns'
 
 const route = getRouteApi('/_authenticated/tasks/')
 
-type DataTableProps = {
+interface DataTableProps {
   data: Task[]
+  onRefresh?: () => void
 }
 
-export function TasksTable({ data }: DataTableProps) {
+export function TasksTable({ data, onRefresh }: DataTableProps) {
   // Local UI-only states
   const [rowSelection, setRowSelection] = useState({})
   const [sorting, setSorting] = useState<SortingState>([])
@@ -65,6 +66,7 @@ export function TasksTable({ data }: DataTableProps) {
     ],
   })
 
+   
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data,
@@ -191,7 +193,7 @@ export function TasksTable({ data }: DataTableProps) {
         </Table>
       </div>
       <DataTablePagination table={table} className='mt-auto' />
-      <DataTableBulkActions table={table} />
+      <DataTableBulkActions table={table} onRefresh={onRefresh} />
     </div>
   )
 }

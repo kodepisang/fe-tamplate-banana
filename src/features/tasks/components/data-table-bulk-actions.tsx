@@ -22,10 +22,12 @@ import { TasksMultiDeleteDialog } from './tasks-multi-delete-dialog'
 
 type DataTableBulkActionsProps<TData> = {
   table: Table<TData>
+  onRefresh?: () => void
 }
 
 export function DataTableBulkActions<TData>({
   table,
+  onRefresh,
 }: DataTableBulkActionsProps<TData>) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const selectedRows = table.getFilteredSelectedRowModel().rows
@@ -184,9 +186,10 @@ export function DataTableBulkActions<TData>({
       </BulkActionsToolbar>
 
       <TasksMultiDeleteDialog
+        table={table}
         open={showDeleteConfirm}
         onOpenChange={setShowDeleteConfirm}
-        table={table}
+        onRefresh={onRefresh}
       />
     </>
   )

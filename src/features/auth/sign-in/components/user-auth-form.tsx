@@ -5,9 +5,8 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { Loader2, LogIn } from 'lucide-react'
 import { toast } from 'sonner'
-import { IconFacebook, IconGithub } from '@/assets/brand-icons'
 import { useAuthStore } from '@/stores/auth-store'
-import { sleep, cn } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -21,13 +20,11 @@ import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/password-input'
 
 const formSchema = z.object({
-  email: z.email({
-    error: (iss) => (iss.input === '' ? 'Please enter your email.' : undefined),
-  }),
+  username: z.string().min(1, 'Harap masukkan username Anda.'),
   password: z
     .string()
-    .min(1, 'Please enter your password.')
-    .min(7, 'Password must be at least 7 characters long.'),
+    .min(1, 'Harap masukkan password Anda.')
+    .min(6, 'Password harus memiliki minimal 6 karakter.'),
 })
 
 interface UserAuthFormProps extends React.HTMLAttributes<HTMLFormElement> {
@@ -46,39 +43,49 @@ export function UserAuthForm({
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      email: '',
+      username: '',
       password: '',
     },
   })
 
-  function onSubmit(data: z.infer<typeof formSchema>) {
+  async function onSubmit(data: z.infer<typeof formSchema>) {
     setIsLoading(true)
 
-    toast.promise(sleep(2000), {
-      loading: 'Signing in...',
-      success: () => {
-        setIsLoading(false)
+    try {
+      // Import the api instance
+      const api = (await import('@/lib/api')).default
 
-        // Mock successful authentication with expiry computed at success time
-        const mockUser = {
-          accountNo: 'ACC001',
-          email: data.email,
-          role: ['user'],
-          exp: Date.now() + 24 * 60 * 60 * 1000, // 24 hours from now
-        }
+      const response = await api.post('/auth/login', {
+        username: data.username,
+        password: data.password,
+      })
 
+      const result = response.data
+      if (result.success) {
         // Set user and access token
-        auth.setUser(mockUser)
-        auth.setAccessToken('mock-access-token')
+        auth.setUser(result.data.user)
+        auth.setAccessToken(result.data.token)
+
+        toast.success(`Selamat datang kembali, ${result.data.user.name}!`)
 
         // Redirect to the stored location or default to dashboard
         const targetPath = redirectTo || '/'
         navigate({ to: targetPath, replace: true })
-
-        return `Welcome back, ${data.email}!`
-      },
-      error: 'Error',
-    })
+      } else {
+        toast.error(result.message || 'Gagal masuk')
+      }
+    } catch (error) {
+      const err = error as Error & {
+        response?: { data?: { message?: string } }
+      }
+      toast.error(
+        err.response?.data?.message ||
+          err.message ||
+          'Terjadi kesalahan saat masuk'
+      )
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -90,12 +97,12 @@ export function UserAuthForm({
       >
         <FormField
           control={form.control}
-          name='email'
+          name='username'
           render={({ field }) => (
-            <FormItem>
-              <FormLabel>Email</FormLabel>
+            <FormItem className='space-y-1.5'>
+              <FormLabel className='text-xs font-semibold text-foreground/80'>Username</FormLabel>
               <FormControl>
-                <Input placeholder='name@example.com' {...field} />
+                <Input placeholder='Masukkan username Anda' className='h-10 text-sm bg-background/50 focus-visible:ring-1' {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -105,33 +112,35 @@ export function UserAuthForm({
           control={form.control}
           name='password'
           render={({ field }) => (
-            <FormItem className='relative'>
-              <FormLabel>Password</FormLabel>
+            <FormItem className='relative space-y-1.5'>
+              <div className='flex items-center justify-between'>
+                <FormLabel className='text-xs font-semibold text-foreground/80'>Password</FormLabel>
+                <Link
+                  to='/forgot-password'
+                  className='text-xs font-medium text-primary hover:underline underline-offset-4'
+                >
+                  Lupa password?
+                </Link>
+              </div>
               <FormControl>
-                <PasswordInput placeholder='********' {...field} />
+                <PasswordInput placeholder='••••••••' className='h-10 text-sm bg-background/50 focus-visible:ring-1' {...field} />
               </FormControl>
               <FormMessage />
-              <Link
-                to='/forgot-password'
-                className='absolute inset-e-0 -top-0.5 text-sm font-medium text-muted-foreground hover:opacity-75'
-              >
-                Forgot password?
-              </Link>
             </FormItem>
           )}
         />
-        <Button className='mt-2' disabled={isLoading}>
-          {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
-          Sign in
+        <Button className='mt-3 h-10 w-full font-semibold text-sm shadow-md transition-all duration-200 active:scale-[0.99]' disabled={isLoading}>
+          {isLoading ? <Loader2 className='mr-2 h-4 w-4 animate-spin' /> : <LogIn className='mr-2 h-4 w-4' />}
+          {isLoading ? 'Memproses...' : 'Masuk Sekarang'}
         </Button>
 
-        <div className='relative my-2'>
+        {/* <div className='relative my-2'>
           <div className='absolute inset-0 flex items-center'>
             <span className='w-full border-t' />
           </div>
           <div className='relative flex justify-center text-xs uppercase'>
             <span className='bg-background px-2 text-muted-foreground'>
-              Or continue with
+              Atau lanjutkan dengan
             </span>
           </div>
         </div>
@@ -143,7 +152,7 @@ export function UserAuthForm({
           <Button variant='outline' type='button' disabled={isLoading}>
             <IconFacebook className='h-4 w-4' /> Facebook
           </Button>
-        </div>
+        </div> */}
       </form>
     </Form>
   )

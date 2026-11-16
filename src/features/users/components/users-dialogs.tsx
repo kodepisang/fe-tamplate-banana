@@ -3,7 +3,7 @@ import { UsersDeleteDialog } from './users-delete-dialog'
 import { UsersInviteDialog } from './users-invite-dialog'
 import { useUsers } from './users-provider'
 
-export function UsersDialogs() {
+export function UsersDialogs({ onRefresh }: { onRefresh?: () => void }) {
   const { open, setOpen, currentRow, setCurrentRow } = useUsers()
   return (
     <>
@@ -11,6 +11,7 @@ export function UsersDialogs() {
         key='user-add'
         open={open === 'add'}
         onOpenChange={() => setOpen('add')}
+        onRefresh={onRefresh}
       />
 
       <UsersInviteDialog
@@ -31,6 +32,7 @@ export function UsersDialogs() {
               }, 500)
             }}
             currentRow={currentRow}
+            onRefresh={onRefresh}
           />
 
           <UsersDeleteDialog
@@ -43,6 +45,7 @@ export function UsersDialogs() {
               }, 500)
             }}
             currentRow={currentRow}
+            onRefresh={onRefresh}
           />
         </>
       )}
