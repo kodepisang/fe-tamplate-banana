@@ -66,8 +66,10 @@ export function SettingsWaMonitor() {
   // Selection & Delete state
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isClearAllDialogOpen, setIsClearAllDialogOpen] = useState(false)
   const [singleDeleteId, setSingleDeleteId] = useState<number | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [totalLogsCount, setTotalLogsCount] = useState<number | null>(null)
 
   // Reset Dedup Dialog state
   const [isResetOpen, setIsResetOpen] = useState(false)
@@ -77,7 +79,7 @@ export function SettingsWaMonitor() {
 
   const fetchStatus = async () => {
     try {
-      const res = await api.get('/whatsapp/status')
+      const res = await api.get('/whatsapp/status', { params: { _t: Date.now() } })
       if (res.data.success) {
         setStatus(res.data.data)
       }
@@ -89,13 +91,16 @@ export function SettingsWaMonitor() {
   const fetchLogs = async () => {
     try {
       setLoading(true)
-      const params: Record<string, unknown> = { limit: 50 }
+      const params: Record<string, unknown> = { limit: 50, _t: Date.now() }
       if (statusFilter !== 'ALL') {
         params.status = statusFilter
       }
       const res = await api.get('/whatsapp/logs', { params })
       if (res.data.success) {
         setLogs(res.data.data)
+        if (res.data.meta?.total !== undefined) {
+          setTotalLogsCount(res.data.meta.total)
+        }
       }
     } catch (_err) {
       toast.error('Gagal memuat log WhatsApp')
@@ -199,7 +204,9 @@ export function SettingsWaMonitor() {
 
   const promptDeleteSingle = (id: number) => {
     setSingleDeleteId(id)
-    setIsDeleteDialogOpen(true)
+    setTimeout(() => {
+      setIsDeleteDialogOpen(true)
+    }, 50)
   }
 
   const promptDeleteBatch = () => {
@@ -208,22 +215,34 @@ export function SettingsWaMonitor() {
     setIsDeleteDialogOpen(true)
   }
 
+  const promptClearAll = () => {
+    setIsClearAllDialogOpen(true)
+  }
+
   const handleConfirmDelete = async () => {
     try {
       setIsDeleting(true)
       if (singleDeleteId) {
-        const res = await api.delete(`/whatsapp/logs/${singleDeleteId}`)
+        const idToDelete = singleDeleteId
+        // Optimistic UI update: langsung hilangkan dari tabel
+        setLogs((prev) => prev.filter((l) => l.id !== idToDelete))
+        setSelectedIds((prev) => prev.filter((id) => id !== idToDelete))
+
+        const res = await api.delete(`/whatsapp/logs/${idToDelete}`)
         if (res.data.success) {
-          toast.success(`Log #${singleDeleteId} berhasil dihapus`)
-          setSelectedIds((prev) => prev.filter((id) => id !== singleDeleteId))
+          toast.success(`Log #${idToDelete} berhasil dihapus`)
         }
       } else if (selectedIds.length > 0) {
+        const idsToDelete = [...selectedIds]
+        // Optimistic UI update: langsung hilangkan dari tabel
+        setLogs((prev) => prev.filter((l) => !idsToDelete.includes(l.id)))
+        setSelectedIds([])
+
         const res = await api.delete('/whatsapp/logs', {
-          data: { ids: selectedIds },
+          data: { ids: idsToDelete },
         })
         if (res.data.success) {
-          toast.success(`${res.data.data?.count || selectedIds.length} log pengiriman berhasil dihapus`)
-          setSelectedIds([])
+          toast.success(`${res.data.data?.count || idsToDelete.length} log pengiriman berhasil dihapus`)
         }
       }
       fetchLogs()
@@ -232,10 +251,36 @@ export function SettingsWaMonitor() {
       const errorMsg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message
       toast.error(errorMsg || 'Gagal menghapus log')
+      fetchLogs()
     } finally {
       setIsDeleting(false)
       setIsDeleteDialogOpen(false)
       setSingleDeleteId(null)
+    }
+  }
+
+  const handleConfirmClearAll = async () => {
+    try {
+      setIsDeleting(true)
+      const params: Record<string, unknown> = {}
+      if (statusFilter !== 'ALL') {
+        params.status = statusFilter
+      }
+      const res = await api.delete('/whatsapp/logs/all', { params })
+      if (res.data.success) {
+        toast.success(res.data.message || 'Seluruh log pengiriman berhasil dibersihkan')
+        setLogs([])
+        setSelectedIds([])
+      }
+      fetchLogs()
+      fetchStatus()
+    } catch (err: unknown) {
+      const errorMsg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      toast.error(errorMsg || 'Gagal membersihkan riwayat log')
+    } finally {
+      setIsDeleting(false)
+      setIsClearAllDialogOpen(false)
     }
   }
 
@@ -359,25 +404,43 @@ export function SettingsWaMonitor() {
       <div className='space-y-4'>
         <div className='flex flex-col sm:flex-row sm:items-center justify-between gap-3'>
           <div>
-            <h4 className='font-semibold text-md text-foreground'>Log Pengiriman Terbaru (50 Terakhir)</h4>
+            <h4 className='font-semibold text-md text-foreground flex flex-wrap items-center gap-2'>
+              <span>Log Pengiriman Terbaru</span>
+              {totalLogsCount !== null && (
+                <Badge variant='outline' className='text-[11px] font-normal'>
+                  Menampilkan {logs.length} dari {totalLogsCount.toLocaleString()} total data
+                </Badge>
+              )}
+            </h4>
             <p className='text-xs text-muted-foreground'>
               Daftar pengiriman pesan WhatsApp terbaru beserta status, log galat, dan opsi penanganan.
             </p>
           </div>
-          <div className='flex items-center gap-2 self-start sm:self-auto'>
-            <Label className='text-xs whitespace-nowrap'>Filter Status:</Label>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className='w-[140px] h-8 text-xs'>
-                <SelectValue placeholder='Semua Status' />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value='ALL'>Semua Status</SelectItem>
-                <SelectItem value='SENT'>SENT (Sukses)</SelectItem>
-                <SelectItem value='FAILED'>FAILED (Gagal)</SelectItem>
-                <SelectItem value='QUEUED'>QUEUED (Antrian)</SelectItem>
-                <SelectItem value='SKIPPED'>SKIPPED (Di-skip)</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className='flex flex-wrap items-center gap-2 self-start sm:self-auto'>
+            <Button
+              variant='outline'
+              size='sm'
+              className='h-8 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 dark:border-rose-900 shadow-xs'
+              onClick={promptClearAll}
+              title='Bersihkan seluruh riwayat log di database'
+            >
+              <Trash2 className='mr-1.5 h-3.5 w-3.5' /> Kosongkan Riwayat
+            </Button>
+            <div className='flex items-center gap-1.5'>
+              <Label className='text-xs whitespace-nowrap'>Status:</Label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className='w-[130px] h-8 text-xs'>
+                  <SelectValue placeholder='Semua Status' />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='ALL'>Semua Status</SelectItem>
+                  <SelectItem value='SENT'>SENT (Sukses)</SelectItem>
+                  <SelectItem value='FAILED'>FAILED (Gagal)</SelectItem>
+                  <SelectItem value='QUEUED'>QUEUED (Antrian)</SelectItem>
+                  <SelectItem value='SKIPPED'>SKIPPED (Di-skip)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 
@@ -629,6 +692,23 @@ export function SettingsWaMonitor() {
             : `Apakah Anda yakin ingin menghapus ${selectedIds.length} data log pengiriman WhatsApp terpilih? Data yang dihapus tidak dapat dipulihkan.`
         }
         confirmText='Hapus Permanen'
+        cancelBtnText='Batal'
+      />
+
+      {/* Dialog Konfirmasi Bersihkan Seluruh Log */}
+      <ConfirmDialog
+        open={isClearAllDialogOpen}
+        onOpenChange={setIsClearAllDialogOpen}
+        handleConfirm={handleConfirmClearAll}
+        destructive
+        isLoading={isDeleting}
+        title='Konfirmasi Bersihkan Seluruh Riwayat Log'
+        desc={`Apakah Anda yakin ingin menghapus SELURUH riwayat log pengiriman WhatsApp${
+          statusFilter !== 'ALL' ? ` berstatus ${statusFilter}` : ''
+        }? Seluruh data riwayat (${
+          totalLogsCount !== null ? `${totalLogsCount.toLocaleString()} data` : 'semua log'
+        }) akan dihapus secara permanen dari database.`}
+        confirmText='Bersihkan Semua'
         cancelBtnText='Batal'
       />
 
