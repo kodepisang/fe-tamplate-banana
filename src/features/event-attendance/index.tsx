@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { format } from 'date-fns'
+import { format, subDays, startOfMonth, endOfMonth } from 'date-fns'
 import { toast } from 'sonner'
 import api from '@/lib/api'
 import { getServerTime } from '@/lib/server-time'
@@ -36,6 +36,7 @@ import { Link } from '@tanstack/react-router'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { EventAttendanceChart } from './components/event-attendance-chart'
 
 export interface EventItem {
   id: number
@@ -89,9 +90,13 @@ export function EventAttendanceView() {
   const [lastUpdated, setLastUpdated] = useState<string>('')
 
   // Filters
-  const [selectedDate, setSelectedDate] = useState<string>(
+  const [startDate, setStartDate] = useState<string>(
     format(getServerTime(), 'yyyy-MM-dd')
   )
+  const [endDate, setEndDate] = useState<string>(
+    format(getServerTime(), 'yyyy-MM-dd')
+  )
+  const [isRangeMode, setIsRangeMode] = useState(false)
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null)
   const [selectedClassId, setSelectedClassId] = useState<string>('ALL')
   const [searchQuery, setSearchQuery] = useState('')
@@ -124,8 +129,12 @@ export function EventAttendanceView() {
     async (isManual = false) => {
       try {
         if (isManual) setRefreshing(true)
-        const params: Record<string, string | number> = {
-          date: selectedDate,
+        const params: Record<string, string | number> = {}
+        if (startDate === endDate) {
+          params.date = startDate
+        } else {
+          params.startDate = startDate
+          params.endDate = endDate
         }
         if (selectedEventId) {
           params.eventId = selectedEventId
@@ -150,7 +159,7 @@ export function EventAttendanceView() {
         if (isManual) setRefreshing(false)
       }
     },
-    [selectedDate, selectedEventId, selectedClassId]
+    [startDate, endDate, selectedEventId, selectedClassId]
   )
 
   // Initial and reactive fetch
@@ -565,27 +574,142 @@ export function EventAttendanceView() {
                 </select>
               </div>
 
-              {/* Date Selector */}
+              {/* Date / Date Range Selector */}
               <div className='space-y-1.5'>
-                <label className='text-xs font-semibold text-muted-foreground'>Tanggal Kegiatan</label>
-                <div className='flex gap-1'>
-                  <Input
-                    type='date'
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className='text-sm'
-                  />
-                  <Button
-                    variant='outline'
-                    size='sm'
+                <div className='flex items-center justify-between'>
+                  <label className='text-xs font-semibold text-muted-foreground'>
+                    {isRangeMode ? 'Rentang Tanggal' : 'Tanggal Kegiatan'}
+                  </label>
+                  <button
                     type='button'
-                    onClick={() => setSelectedDate(format(getServerTime(), 'yyyy-MM-dd'))}
-                    title='Kembali ke hari ini'
-                    className='px-2.5 text-xs'
+                    onClick={() => {
+                      if (!isRangeMode) {
+                        setIsRangeMode(true)
+                      } else {
+                        setIsRangeMode(false)
+                        setEndDate(startDate)
+                      }
+                    }}
+                    className='text-[10px] text-primary hover:underline font-medium'
                   >
-                    Hari Ini
-                  </Button>
+                    {isRangeMode ? '1 Hari' : 'Rentang'}
+                  </button>
                 </div>
+                {!isRangeMode ? (
+                  <div className='flex gap-1'>
+                    <Input
+                      type='date'
+                      value={startDate}
+                      onChange={(e) => {
+                        setStartDate(e.target.value)
+                        setEndDate(e.target.value)
+                      }}
+                      className='text-sm'
+                    />
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      type='button'
+                      onClick={() => {
+                        const today = format(getServerTime(), 'yyyy-MM-dd')
+                        setStartDate(today)
+                        setEndDate(today)
+                      }}
+                      title='Kembali ke hari ini'
+                      className='px-2.5 text-xs'
+                    >
+                      Hari Ini
+                    </Button>
+                  </div>
+                ) : (
+                  <div className='space-y-1'>
+                    <div className='flex items-center gap-1'>
+                      <Input
+                        type='date'
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className='text-xs h-8 px-2'
+                        title='Tanggal Mulai'
+                      />
+                      <span className='text-[10px] text-muted-foreground'>s/d</span>
+                      <Input
+                        type='date'
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className='text-xs h-8 px-2'
+                        title='Tanggal Selesai'
+                      />
+                    </div>
+                    <div className='flex flex-wrap gap-1'>
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        type='button'
+                        className='h-5 px-1 text-[10px]'
+                        onClick={() => {
+                          const today = format(getServerTime(), 'yyyy-MM-dd')
+                          setStartDate(today)
+                          setEndDate(today)
+                          setIsRangeMode(false)
+                        }}
+                      >
+                        Hari Ini
+                      </Button>
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        type='button'
+                        className='h-5 px-1 text-[10px]'
+                        onClick={() => {
+                          const now = getServerTime()
+                          setStartDate(format(subDays(now, 6), 'yyyy-MM-dd'))
+                          setEndDate(format(now, 'yyyy-MM-dd'))
+                        }}
+                      >
+                        7 Hari
+                      </Button>
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        type='button'
+                        className='h-5 px-1 text-[10px]'
+                        onClick={() => {
+                          const now = getServerTime()
+                          setStartDate(format(subDays(now, 13), 'yyyy-MM-dd'))
+                          setEndDate(format(now, 'yyyy-MM-dd'))
+                        }}
+                      >
+                        14 Hari
+                      </Button>
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        type='button'
+                        className='h-5 px-1 text-[10px]'
+                        onClick={() => {
+                          const now = getServerTime()
+                          setStartDate(format(subDays(now, 29), 'yyyy-MM-dd'))
+                          setEndDate(format(now, 'yyyy-MM-dd'))
+                        }}
+                      >
+                        30 Hari
+                      </Button>
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        type='button'
+                        className='h-5 px-1 text-[10px]'
+                        onClick={() => {
+                          const now = getServerTime()
+                          setStartDate(format(startOfMonth(now), 'yyyy-MM-dd'))
+                          setEndDate(format(endOfMonth(now), 'yyyy-MM-dd'))
+                        }}
+                      >
+                        Bulan Ini
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Class Filter */}
@@ -742,6 +866,17 @@ export function EventAttendanceView() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Visual Analytics Chart */}
+        <EventAttendanceChart
+          dashboardData={dashboardData}
+          selectedEventId={selectedEventId}
+          startDate={startDate}
+          endDate={endDate}
+          selectedDate={startDate}
+          selectedClassId={selectedClassId}
+          onRefresh={() => fetchDashboard(true)}
+        />
 
         {/* Panel Analisa Kehadiran Kegiatan */}
         {dashboardData && (

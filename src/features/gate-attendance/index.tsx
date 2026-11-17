@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { format } from 'date-fns'
+import { format, subDays, startOfMonth, endOfMonth } from 'date-fns'
 import { Link } from '@tanstack/react-router'
 import { type ColumnDef } from '@tanstack/react-table'
 import jsPDF from 'jspdf'
@@ -119,9 +119,13 @@ export function GateAttendance() {
   const [lastUpdated, setLastUpdated] = useState<string>('')
 
   // Filters
-  const [selectedDate, setSelectedDate] = useState<string>(
+  const [startDate, setStartDate] = useState<string>(
     format(getServerTime(), 'yyyy-MM-dd')
   )
+  const [endDate, setEndDate] = useState<string>(
+    format(getServerTime(), 'yyyy-MM-dd')
+  )
+  const [isRangeMode, setIsRangeMode] = useState(false)
   const [selectedClassId, setSelectedClassId] = useState<string>('ALL')
   const [searchQuery, setSearchQuery] = useState('')
   const [activeStatusTab, setActiveStatusTab] = useState<string>('ALL')
@@ -150,8 +154,15 @@ export function GateAttendance() {
     async (isManual = false) => {
       try {
         if (isManual) setRefreshing(true)
+        const params: Record<string, string> = {}
+        if (startDate === endDate) {
+          params.date = startDate
+        } else {
+          params.startDate = startDate
+          params.endDate = endDate
+        }
         const [resLogs, resUsers] = await Promise.all([
-          api.get('/attendances/gate-logs', { params: { date: selectedDate } }),
+          api.get('/attendances/gate-logs', { params }),
           api.get('/users?role=MURID'),
         ])
         if (resLogs.data.success) {
@@ -168,7 +179,7 @@ export function GateAttendance() {
         if (isManual) setRefreshing(false)
       }
     },
-    [selectedDate]
+    [startDate, endDate]
   )
 
   useEffect(() => {
@@ -216,25 +227,30 @@ export function GateAttendance() {
     return usersList.filter((u) => u.profile?.classId === targetClassId)
   }, [usersList, selectedClassId])
 
-  // Filter logs by selected date and class
+  // Filter logs by selected date range and class
   const dateFilteredLogs = useMemo(() => {
     return logs.filter((log) => {
-      const matchDate =
-        format(new Date(log.date), 'yyyy-MM-dd') === selectedDate
-      if (!matchDate) return false
+      const logDate = format(new Date(log.date), 'yyyy-MM-dd')
+      if (startDate === endDate) {
+        if (logDate !== startDate) return false
+      } else {
+        if (logDate < startDate || logDate > endDate) return false
+      }
       if (selectedClassId !== 'ALL') {
         const targetClassId = parseInt(selectedClassId, 10)
         return log.user.profile?.classId === targetClassId
       }
       return true
     })
-  }, [logs, selectedDate, selectedClassId])
+  }, [logs, startDate, endDate, selectedClassId])
 
-  // Map of student userId -> GateLogData for selected date
+  // Map of student userId -> GateLogData for selected date range
   const logMapByUserId = useMemo(() => {
     const map = new Map<number, GateLogData>()
     for (const log of dateFilteredLogs) {
-      map.set(log.userId, log)
+      if (!map.has(log.userId)) {
+        map.set(log.userId, log)
+      }
     }
     return map
   }, [dateFilteredLogs])
@@ -250,7 +266,7 @@ export function GateAttendance() {
       return {
         id: -student.id,
         userId: student.id,
-        date: selectedDate,
+        date: startDate,
         checkInTime: null,
         checkOutTime: null,
         status: 'ALPHA',
@@ -268,7 +284,7 @@ export function GateAttendance() {
         },
       } as GateLogData
     })
-  }, [studentsFilteredByClass, logMapByUserId, selectedDate])
+  }, [studentsFilteredByClass, logMapByUserId, startDate])
 
   // Filtered by active status tab and search query
   const finalFilteredLogs = useMemo(() => {
@@ -321,17 +337,32 @@ export function GateAttendance() {
 
   // Formatted date string in Indonesian
   const dateFormatted = useMemo(() => {
-    return new Date(`${selectedDate}T12:00:00.000+07:00`).toLocaleDateString(
-      'id-ID',
-      {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-        timeZone: 'Asia/Jakarta',
-      }
-    )
-  }, [selectedDate])
+    if (startDate === endDate) {
+      return new Date(`${startDate}T12:00:00.000+07:00`).toLocaleDateString(
+        'id-ID',
+        {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+          timeZone: 'Asia/Jakarta',
+        }
+      )
+    }
+    const startStr = new Date(`${startDate}T12:00:00.000+07:00`).toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'Asia/Jakarta',
+    })
+    const endStr = new Date(`${endDate}T12:00:00.000+07:00`).toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'Asia/Jakarta',
+    })
+    return `${startStr} s/d ${endStr}`
+  }, [startDate, endDate])
 
   // Performance category label
   let performanceLabel = 'Perlu Perhatian'
@@ -388,8 +419,10 @@ export function GateAttendance() {
       return 'Belum ada data siswa terdaftar pada kelas yang dipilih.'
     }
 
+    const datePrefix = startDate === endDate ? `Pada ${dateFormatted}` : `Pada periode ${dateFormatted}`
+
     if (totalHadirKeseluruhan === 0) {
-      return `Pada ${dateFormatted}, belum ada siswa yang mencatatkan presensi di gerbang sekolah. Dari total ${totalSiswa} siswa terdaftar, seluruhnya tercatat belum hadir/alpa.`
+      return `${datePrefix}, belum ada siswa yang mencatatkan presensi di gerbang sekolah. Dari total ${totalSiswa} siswa terdaftar, seluruhnya tercatat belum hadir/alpa.`
     }
 
     let classHighlight = ''
@@ -423,9 +456,11 @@ export function GateAttendance() {
         ? ` Sebanyak ${onTimeRate}% siswa yang hadir datang tepat waktu.`
         : ''
 
-    return `Pada ${dateFormatted}, tingkat kehadiran siswa di gerbang mencapai ${attendanceRate}% (${performanceLabel}). Dari total ${totalSiswa} siswa terdaftar, sebanyak ${totalHadir} siswa (${((totalHadir / totalSiswa) * 100).toFixed(1)}%) hadir tepat waktu, ${totalTerlambat} siswa (${((totalTerlambat / totalSiswa) * 100).toFixed(1)}%) terlambat, dan ${totalTidakHadir} siswa (${((totalTidakHadir / totalSiswa) * 100).toFixed(1)}%) belum hadir/alpa.${punctualityText}${classHighlight}`
+    return `${datePrefix}, tingkat kehadiran siswa di gerbang mencapai ${attendanceRate}% (${performanceLabel}). Dari total ${totalSiswa} siswa terdaftar, sebanyak ${totalHadir} siswa (${((totalHadir / totalSiswa) * 100).toFixed(1)}%) hadir tepat waktu, ${totalTerlambat} siswa (${((totalTerlambat / totalSiswa) * 100).toFixed(1)}%) terlambat, dan ${totalTidakHadir} siswa (${((totalTidakHadir / totalSiswa) * 100).toFixed(1)}%) belum hadir/alpa.${punctualityText}${classHighlight}`
   }, [
     dateFormatted,
+    startDate,
+    endDate,
     attendanceRate,
     performanceLabel,
     totalSiswa,
@@ -599,7 +634,7 @@ export function GateAttendance() {
       NIS: log.user.profile?.nomorInduk || '-',
       'Nama Siswa': log.user.name,
       Kelas: log.user.profile?.class?.name || '-',
-      Tanggal: selectedDate,
+      Tanggal: log.date ? format(new Date(log.date), 'yyyy-MM-dd') : startDate,
       'Jam Masuk': log.checkInTime
         ? format(new Date(log.checkInTime), 'HH:mm:ss')
         : '-',
@@ -612,9 +647,10 @@ export function GateAttendance() {
     const worksheet = XLSX.utils.json_to_sheet(exportData)
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Absensi Gerbang')
+    const fileSuffix = startDate === endDate ? startDate : `${startDate}_sd_${endDate}`
     XLSX.writeFile(
       workbook,
-      `Laporan_Absensi_Gerbang_${activeStatusTab}_${selectedDate}.xlsx`
+      `Laporan_Absensi_Gerbang_${activeStatusTab}_${fileSuffix}.xlsx`
     )
     toast.success('File Excel absensi gerbang berhasil diunduh.')
   }
@@ -925,7 +961,8 @@ export function GateAttendance() {
       )
     }
 
-    doc.save(`Laporan_Analisis_Absensi_Gerbang_${selectedDate}.pdf`)
+    const fileSuffix = startDate === endDate ? startDate : `${startDate}_sd_${endDate}`
+    doc.save(`Laporan_Analisis_Absensi_Gerbang_${fileSuffix}.pdf`)
     toast.success('Laporan PDF analisa absensi gerbang berhasil diunduh.')
   }
 
@@ -969,7 +1006,7 @@ export function GateAttendance() {
     })
 
     doc.save(
-      `Presensi_${log.user.name.replace(/\s+/g, '_')}_${selectedDate}.pdf`
+      `Presensi_${log.user.name.replace(/\s+/g, '_')}_${startDate}.pdf`
     )
   }
 
@@ -1048,31 +1085,142 @@ export function GateAttendance() {
         <Card className='border bg-card shadow-sm'>
           <CardContent className='p-4'>
             <div className='grid items-end gap-4 sm:grid-cols-2 md:grid-cols-4'>
-              {/* Date Filter */}
+              {/* Date / Date Range Filter */}
               <div className='space-y-1.5'>
-                <label className='text-xs font-semibold text-muted-foreground'>
-                  Tanggal Presensi
-                </label>
-                <div className='flex gap-1'>
-                  <Input
-                    type='date'
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className='text-sm'
-                  />
-                  <Button
-                    variant='outline'
-                    size='sm'
+                <div className='flex items-center justify-between'>
+                  <label className='text-xs font-semibold text-muted-foreground'>
+                    {isRangeMode ? 'Rentang Tanggal' : 'Tanggal Presensi'}
+                  </label>
+                  <button
                     type='button'
-                    onClick={() =>
-                      setSelectedDate(format(getServerTime(), 'yyyy-MM-dd'))
-                    }
-                    title='Kembali ke hari ini'
-                    className='px-2.5 text-xs'
+                    onClick={() => {
+                      if (!isRangeMode) {
+                        setIsRangeMode(true)
+                      } else {
+                        setIsRangeMode(false)
+                        setEndDate(startDate)
+                      }
+                    }}
+                    className='text-[10px] text-primary hover:underline font-medium'
                   >
-                    Hari Ini
-                  </Button>
+                    {isRangeMode ? '1 Hari' : 'Rentang'}
+                  </button>
                 </div>
+                {!isRangeMode ? (
+                  <div className='flex gap-1'>
+                    <Input
+                      type='date'
+                      value={startDate}
+                      onChange={(e) => {
+                        setStartDate(e.target.value)
+                        setEndDate(e.target.value)
+                      }}
+                      className='text-sm'
+                    />
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      type='button'
+                      onClick={() => {
+                        const today = format(getServerTime(), 'yyyy-MM-dd')
+                        setStartDate(today)
+                        setEndDate(today)
+                      }}
+                      title='Kembali ke hari ini'
+                      className='px-2.5 text-xs'
+                    >
+                      Hari Ini
+                    </Button>
+                  </div>
+                ) : (
+                  <div className='space-y-1'>
+                    <div className='flex items-center gap-1'>
+                      <Input
+                        type='date'
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className='text-xs h-8 px-2'
+                        title='Tanggal Mulai'
+                      />
+                      <span className='text-[10px] text-muted-foreground'>s/d</span>
+                      <Input
+                        type='date'
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className='text-xs h-8 px-2'
+                        title='Tanggal Selesai'
+                      />
+                    </div>
+                    <div className='flex flex-wrap gap-1'>
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        type='button'
+                        className='h-5 px-1 text-[10px]'
+                        onClick={() => {
+                          const today = format(getServerTime(), 'yyyy-MM-dd')
+                          setStartDate(today)
+                          setEndDate(today)
+                          setIsRangeMode(false)
+                        }}
+                      >
+                        Hari Ini
+                      </Button>
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        type='button'
+                        className='h-5 px-1 text-[10px]'
+                        onClick={() => {
+                          const now = getServerTime()
+                          setStartDate(format(subDays(now, 6), 'yyyy-MM-dd'))
+                          setEndDate(format(now, 'yyyy-MM-dd'))
+                        }}
+                      >
+                        7 Hari
+                      </Button>
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        type='button'
+                        className='h-5 px-1 text-[10px]'
+                        onClick={() => {
+                          const now = getServerTime()
+                          setStartDate(format(subDays(now, 13), 'yyyy-MM-dd'))
+                          setEndDate(format(now, 'yyyy-MM-dd'))
+                        }}
+                      >
+                        14 Hari
+                      </Button>
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        type='button'
+                        className='h-5 px-1 text-[10px]'
+                        onClick={() => {
+                          const now = getServerTime()
+                          setStartDate(format(subDays(now, 29), 'yyyy-MM-dd'))
+                          setEndDate(format(now, 'yyyy-MM-dd'))
+                        }}
+                      >
+                        30 Hari
+                      </Button>
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        type='button'
+                        className='h-5 px-1 text-[10px]'
+                        onClick={() => {
+                          const now = getServerTime()
+                          setStartDate(format(startOfMonth(now), 'yyyy-MM-dd'))
+                          setEndDate(format(endOfMonth(now), 'yyyy-MM-dd'))
+                        }}
+                      >
+                        Bulan Ini
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Class Filter */}
@@ -1271,8 +1419,23 @@ export function GateAttendance() {
           </Card>
         </div>
 
-        {/* Grafik Analisis Kehadiran Gerbang (Tren 4 Garis) */}
-        <GateAttendanceChart selectedClassId={selectedClassId} />
+        {/* Grafik Analisis Kehadiran Gerbang (Multi-Tab) */}
+        <GateAttendanceChart
+          selectedClassId={selectedClassId}
+          startDate={startDate}
+          endDate={endDate}
+          dateFormatted={dateFormatted}
+          classAnalysis={classAnalysis}
+          logs={dateFilteredLogs}
+          totalSiswa={totalSiswa}
+          hadirCount={totalHadir}
+          terlambatCount={totalTerlambat}
+          alphaCount={totalTidakHadir}
+          totalHadirKeseluruhan={totalHadirKeseluruhan}
+          attendanceRate={attendanceRate}
+          performanceLabel={performanceLabel}
+          onRefresh={() => fetchData(true)}
+        />
 
         {/* Panel Dashboard Analisa Kehadiran Gerbang */}
         <Card className='border-l-4 border-l-primary bg-card/60 shadow-sm backdrop-blur-sm'>
