@@ -1,16 +1,9 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { format } from 'date-fns'
+import { Link } from '@tanstack/react-router'
 import { type ColumnDef } from '@tanstack/react-table'
-import { toast } from 'sonner'
-import api from '@/lib/api'
-import { getServerTime } from '@/lib/server-time'
-import { GenericDataTable } from '@/components/data-table'
-import { DataTableColumnHeader } from '@/components/data-table/column-header'
-import { Header } from '@/components/layout/header'
-import { Main } from '@/components/layout/main'
-import { ProfileDropdown } from '@/components/profile-dropdown'
-import { ThemeSwitch } from '@/components/theme-switch'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import {
   Users,
   CheckCircle2,
@@ -28,16 +21,36 @@ import {
   RefreshCw,
   Search,
 } from 'lucide-react'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Link } from '@tanstack/react-router'
+import { toast } from 'sonner'
 import * as XLSX from 'xlsx'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import api from '@/lib/api'
+import { getServerTime } from '@/lib/server-time'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { GenericDataTable } from '@/components/data-table'
+import { DataTableColumnHeader } from '@/components/data-table/column-header'
+import { Header } from '@/components/layout/header'
+import { Main } from '@/components/layout/main'
+import { ProfileDropdown } from '@/components/profile-dropdown'
+import { ThemeSwitch } from '@/components/theme-switch'
+import { GateAttendanceChart } from './components/gate-attendance-chart'
 
 export type WaLogItem = {
   id: number | string
@@ -97,7 +110,9 @@ export interface GateClassAnalysisItem {
 export function GateAttendance() {
   const [logs, setLogs] = useState<GateLogData[]>([])
   const [usersList, setUsersList] = useState<StudentUser[]>([])
-  const [classesList, setClassesList] = useState<{ id: number; name: string }[]>([])
+  const [classesList, setClassesList] = useState<
+    { id: number; name: string }[]
+  >([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(true)
@@ -131,27 +146,30 @@ export function GateAttendance() {
     loadClasses()
   }, [])
 
-  const fetchData = useCallback(async (isManual = false) => {
-    try {
-      if (isManual) setRefreshing(true)
-      const [resLogs, resUsers] = await Promise.all([
-        api.get('/attendances/gate-logs', { params: { date: selectedDate } }),
-        api.get('/users?role=MURID'),
-      ])
-      if (resLogs.data.success) {
-        setLogs(resLogs.data.data)
+  const fetchData = useCallback(
+    async (isManual = false) => {
+      try {
+        if (isManual) setRefreshing(true)
+        const [resLogs, resUsers] = await Promise.all([
+          api.get('/attendances/gate-logs', { params: { date: selectedDate } }),
+          api.get('/users?role=MURID'),
+        ])
+        if (resLogs.data.success) {
+          setLogs(resLogs.data.data)
+        }
+        if (resUsers.data.success) {
+          setUsersList(resUsers.data.data)
+        }
+        setLastUpdated(format(getServerTime(), 'HH:mm:ss'))
+      } catch (_error) {
+        if (isManual) toast.error('Gagal memuat data absensi gerbang')
+      } finally {
+        setLoading(false)
+        if (isManual) setRefreshing(false)
       }
-      if (resUsers.data.success) {
-        setUsersList(resUsers.data.data)
-      }
-      setLastUpdated(format(getServerTime(), 'HH:mm:ss'))
-    } catch (_error) {
-      if (isManual) toast.error('Gagal memuat data absensi gerbang')
-    } finally {
-      setLoading(false)
-      if (isManual) setRefreshing(false)
-    }
-  }, [selectedDate])
+    },
+    [selectedDate]
+  )
 
   useEffect(() => {
     let isMounted = true
@@ -201,7 +219,8 @@ export function GateAttendance() {
   // Filter logs by selected date and class
   const dateFilteredLogs = useMemo(() => {
     return logs.filter((log) => {
-      const matchDate = format(new Date(log.date), 'yyyy-MM-dd') === selectedDate
+      const matchDate =
+        format(new Date(log.date), 'yyyy-MM-dd') === selectedDate
       if (!matchDate) return false
       if (selectedClassId !== 'ALL') {
         const targetClassId = parseInt(selectedClassId, 10)
@@ -242,7 +261,9 @@ export function GateAttendance() {
             guardianPhone: student.profile?.guardianPhone,
             avatarUrl: student.profile?.avatarUrl,
             classId: student.profile?.classId,
-            class: student.profile?.class ? { name: student.profile.class.name } : undefined,
+            class: student.profile?.class
+              ? { name: student.profile.class.name }
+              : undefined,
           },
         },
       } as GateLogData
@@ -254,7 +275,8 @@ export function GateAttendance() {
     return allStudentsWithGateStatus.filter((log) => {
       // Tab filter
       if (activeStatusTab === 'HADIR' && log.status !== 'HADIR') return false
-      if (activeStatusTab === 'TERLAMBAT' && log.status !== 'TERLAMBAT') return false
+      if (activeStatusTab === 'TERLAMBAT' && log.status !== 'TERLAMBAT')
+        return false
       if (activeStatusTab === 'PULANG' && log.status !== 'PULANG') return false
       if (activeStatusTab === 'ALPHA' && log.status !== 'ALPHA') return false
 
@@ -262,8 +284,12 @@ export function GateAttendance() {
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase()
         const matchName = log.user.name.toLowerCase().includes(q)
-        const matchNis = (log.user.profile?.nomorInduk || '').toLowerCase().includes(q)
-        const matchClass = (log.user.profile?.class?.name || '').toLowerCase().includes(q)
+        const matchNis = (log.user.profile?.nomorInduk || '')
+          .toLowerCase()
+          .includes(q)
+        const matchClass = (log.user.profile?.class?.name || '')
+          .toLowerCase()
+          .includes(q)
         if (!matchName && !matchNis && !matchClass) return false
       }
 
@@ -273,23 +299,38 @@ export function GateAttendance() {
 
   // Dashboard Metrics for selected date & class
   const totalSiswa = studentsFilteredByClass.length
-  const totalHadir = dateFilteredLogs.filter((log) => log.status === 'HADIR').length
-  const totalTerlambat = dateFilteredLogs.filter((log) => log.status === 'TERLAMBAT').length
-  const totalPulang = dateFilteredLogs.filter((log) => log.status === 'PULANG').length
+  const totalHadir = dateFilteredLogs.filter(
+    (log) => log.status === 'HADIR'
+  ).length
+  const totalTerlambat = dateFilteredLogs.filter(
+    (log) => log.status === 'TERLAMBAT'
+  ).length
+  const totalPulang = dateFilteredLogs.filter(
+    (log) => log.status === 'PULANG'
+  ).length
   const totalHadirKeseluruhan = totalHadir + totalTerlambat + totalPulang
   const totalTidakHadir = Math.max(0, totalSiswa - totalHadirKeseluruhan)
-  const attendanceRate = totalSiswa > 0 ? Number(((totalHadirKeseluruhan / totalSiswa) * 100).toFixed(1)) : 0
-  const onTimeRate = totalHadirKeseluruhan > 0 ? Number(((totalHadir / totalHadirKeseluruhan) * 100).toFixed(1)) : 0
+  const attendanceRate =
+    totalSiswa > 0
+      ? Number(((totalHadirKeseluruhan / totalSiswa) * 100).toFixed(1))
+      : 0
+  const onTimeRate =
+    totalHadirKeseluruhan > 0
+      ? Number(((totalHadir / totalHadirKeseluruhan) * 100).toFixed(1))
+      : 0
 
   // Formatted date string in Indonesian
   const dateFormatted = useMemo(() => {
-    return new Date(`${selectedDate}T12:00:00.000+07:00`).toLocaleDateString('id-ID', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      timeZone: 'Asia/Jakarta',
-    })
+    return new Date(`${selectedDate}T12:00:00.000+07:00`).toLocaleDateString(
+      'id-ID',
+      {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'Asia/Jakarta',
+      }
+    )
   }, [selectedDate])
 
   // Performance category label
@@ -335,7 +376,8 @@ export function GateAttendance() {
     return Array.from(classMap.values())
       .map((c) => ({
         ...c,
-        percentage: c.total > 0 ? Number(((c.totalHadir / c.total) * 100).toFixed(1)) : 0,
+        percentage:
+          c.total > 0 ? Number(((c.totalHadir / c.total) * 100).toFixed(1)) : 0,
       }))
       .sort((a, b) => a.className.localeCompare(b.className))
   }, [allStudentsWithGateStatus])
@@ -352,30 +394,54 @@ export function GateAttendance() {
 
     let classHighlight = ''
     if (classAnalysis.length > 0) {
-      const sortedByRate = [...classAnalysis].sort((a, b) => b.percentage - a.percentage)
+      const sortedByRate = [...classAnalysis].sort(
+        (a, b) => b.percentage - a.percentage
+      )
       const best = sortedByRate[0]
       const worst = sortedByRate[sortedByRate.length - 1]
 
-      const mostLate = [...classAnalysis].sort((a, b) => b.terlambat - a.terlambat)[0]
+      const mostLate = [...classAnalysis].sort(
+        (a, b) => b.terlambat - a.terlambat
+      )[0]
 
       if (best && best.percentage > 0) {
         classHighlight += ` Kehadiran tertinggi diraih oleh kelas ${best.className} (${best.percentage}%).`
       }
       if (mostLate && mostLate.terlambat > 0) {
         classHighlight += ` Keterlambatan terbanyak terdapat pada kelas ${mostLate.className} (${mostLate.terlambat} siswa).`
-      } else if (worst && worst.alpha > 0 && worst.className !== best?.className) {
+      } else if (
+        worst &&
+        worst.alpha > 0 &&
+        worst.className !== best?.className
+      ) {
         classHighlight += ` Ketidakhadiran terbanyak terdapat pada kelas ${worst.className} (${worst.alpha} siswa alpa).`
       }
     }
 
-    const punctualityText = onTimeRate > 0 ? ` Sebanyak ${onTimeRate}% siswa yang hadir datang tepat waktu.` : ''
+    const punctualityText =
+      onTimeRate > 0
+        ? ` Sebanyak ${onTimeRate}% siswa yang hadir datang tepat waktu.`
+        : ''
 
     return `Pada ${dateFormatted}, tingkat kehadiran siswa di gerbang mencapai ${attendanceRate}% (${performanceLabel}). Dari total ${totalSiswa} siswa terdaftar, sebanyak ${totalHadir} siswa (${((totalHadir / totalSiswa) * 100).toFixed(1)}%) hadir tepat waktu, ${totalTerlambat} siswa (${((totalTerlambat / totalSiswa) * 100).toFixed(1)}%) terlambat, dan ${totalTidakHadir} siswa (${((totalTidakHadir / totalSiswa) * 100).toFixed(1)}%) belum hadir/alpa.${punctualityText}${classHighlight}`
-  }, [dateFormatted, attendanceRate, performanceLabel, totalSiswa, totalHadir, totalTerlambat, totalTidakHadir, totalHadirKeseluruhan, onTimeRate, classAnalysis])
+  }, [
+    dateFormatted,
+    attendanceRate,
+    performanceLabel,
+    totalSiswa,
+    totalHadir,
+    totalTerlambat,
+    totalTidakHadir,
+    totalHadirKeseluruhan,
+    onTimeRate,
+    classAnalysis,
+  ])
 
   // Average arrival time
   const averageCheckInTime = useMemo(() => {
-    const checkIns = dateFilteredLogs.filter((l) => l.checkInTime).map((l) => new Date(l.checkInTime!).getTime())
+    const checkIns = dateFilteredLogs
+      .filter((l) => l.checkInTime)
+      .map((l) => new Date(l.checkInTime!).getTime())
     if (checkIns.length === 0) return '-'
     const avg = checkIns.reduce((a, b) => a + b, 0) / checkIns.length
     return format(new Date(avg), 'HH:mm') + ' WIB'
@@ -388,7 +454,9 @@ export function GateAttendance() {
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title='No.' />
       ),
-      cell: ({ row }) => <div className='ps-2 font-mono text-xs'>{row.index + 1}</div>,
+      cell: ({ row }) => (
+        <div className='ps-2 font-mono text-xs'>{row.index + 1}</div>
+      ),
       enableSorting: false,
       enableHiding: false,
     },
@@ -403,7 +471,7 @@ export function GateAttendance() {
               src={user.profile?.avatarUrl || ''}
               className='object-cover'
             />
-            <AvatarFallback className='text-xs font-bold bg-muted text-muted-foreground'>
+            <AvatarFallback className='bg-muted text-xs font-bold text-muted-foreground'>
               {user.name.slice(0, 2).toUpperCase()}
             </AvatarFallback>
           </Avatar>
@@ -416,14 +484,20 @@ export function GateAttendance() {
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title='NIS' />
       ),
-      cell: ({ row }) => <span className='font-mono text-xs'>{row.original.user.profile?.nomorInduk || '-'}</span>,
+      cell: ({ row }) => (
+        <span className='font-mono text-xs'>
+          {row.original.user.profile?.nomorInduk || '-'}
+        </span>
+      ),
     },
     {
       accessorKey: 'user.name',
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title='Nama Siswa' />
       ),
-      cell: ({ row }) => <span className='font-medium'>{row.original.user.name}</span>,
+      cell: ({ row }) => (
+        <span className='font-medium'>{row.original.user.name}</span>
+      ),
     },
     {
       accessorKey: 'user.profile.class.name',
@@ -473,27 +547,30 @@ export function GateAttendance() {
         const status = row.original.status
         if (status === 'HADIR') {
           return (
-            <Badge className='bg-emerald-500 hover:bg-emerald-600 text-white gap-1'>
+            <Badge className='gap-1 bg-emerald-500 text-white hover:bg-emerald-600'>
               <CheckCircle2 className='h-3 w-3' /> Hadir Tepat
             </Badge>
           )
         }
         if (status === 'TERLAMBAT') {
           return (
-            <Badge className='bg-amber-500 hover:bg-amber-600 text-white gap-1'>
+            <Badge className='gap-1 bg-amber-500 text-white hover:bg-amber-600'>
               <Clock className='h-3 w-3' /> Terlambat
             </Badge>
           )
         }
         if (status === 'PULANG') {
           return (
-            <Badge className='bg-blue-500 hover:bg-blue-600 text-white gap-1'>
+            <Badge className='gap-1 bg-blue-500 text-white hover:bg-blue-600'>
               Pulang
             </Badge>
           )
         }
         return (
-          <Badge variant='destructive' className='bg-rose-500 hover:bg-rose-600 gap-1'>
+          <Badge
+            variant='destructive'
+            className='gap-1 bg-rose-500 hover:bg-rose-600'
+          >
             <XCircle className='h-3 w-3' /> Belum Hadir / Alpha
           </Badge>
         )
@@ -550,10 +627,14 @@ export function GateAttendance() {
     // 1. KOP SURAT RESMI
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(14)
-    doc.text('SISTEM INFORMASI PRESENSI & KEHADIRAN SISWA', pageWidth / 2, 16, { align: 'center' })
+    doc.text('SISTEM INFORMASI PRESENSI & KEHADIRAN SISWA', pageWidth / 2, 16, {
+      align: 'center',
+    })
     doc.setFontSize(11)
     doc.setFont('helvetica', 'normal')
-    doc.text('LAPORAN & ANALISIS PRESENSI GERBANG', pageWidth / 2, 22, { align: 'center' })
+    doc.text('LAPORAN & ANALISIS PRESENSI GERBANG', pageWidth / 2, 22, {
+      align: 'center',
+    })
 
     // Double line divider
     doc.setLineWidth(0.8)
@@ -571,16 +652,33 @@ export function GateAttendance() {
     const selectedClassName =
       selectedClassId === 'ALL'
         ? 'Semua Kelas'
-        : classesList.find((c) => String(c.id) === selectedClassId)?.name || 'Kelas Terpilih'
+        : classesList.find((c) => String(c.id) === selectedClassId)?.name ||
+          'Kelas Terpilih'
     doc.text(`Filter Kelas    : ${selectedClassName}`, 14, 46)
-    doc.text(`Status Filter   : ${activeStatusTab === 'ALL' ? 'Semua Status' : activeStatusTab}`, 14, 52)
+    doc.text(
+      `Status Filter   : ${activeStatusTab === 'ALL' ? 'Semua Status' : activeStatusTab}`,
+      14,
+      52
+    )
 
-    doc.text(`Dicetak Pada    : ${format(new Date(), 'dd/MM/yyyy HH:mm')} WIB`, pageWidth / 2, 40)
+    doc.text(
+      `Dicetak Pada    : ${format(new Date(), 'dd/MM/yyyy HH:mm')} WIB`,
+      pageWidth / 2,
+      40
+    )
     doc.text(`Rata-rata Masuk : ${averageCheckInTime}`, pageWidth / 2, 46)
     doc.text(`Ketepatan Waktu : ${onTimeRate}% Tepat Waktu`, pageWidth / 2, 52)
 
     // 3. STATISTIK KEHADIRAN (Tabel Ringkasan Metrik)
-    const metricsHead = [['Total Siswa', 'Hadir Tepat', 'Terlambat', 'Belum Hadir / Alpha', 'Tingkat Kehadiran']]
+    const metricsHead = [
+      [
+        'Total Siswa',
+        'Hadir Tepat',
+        'Terlambat',
+        'Belum Hadir / Alpha',
+        'Tingkat Kehadiran',
+      ],
+    ]
     const metricsBody = [
       [
         `${totalSiswa} Siswa`,
@@ -612,10 +710,14 @@ export function GateAttendance() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       didParseCell: (data: any) => {
         if (data.section === 'body') {
-          if (data.column.index === 1) data.cell.styles.textColor = [16, 185, 129] // Emerald green
-          else if (data.column.index === 2) data.cell.styles.textColor = [245, 158, 11] // Amber
-          else if (data.column.index === 3) data.cell.styles.textColor = [239, 68, 68] // Red
-          else if (data.column.index === 4) data.cell.styles.textColor = [37, 99, 235] // Blue
+          if (data.column.index === 1)
+            data.cell.styles.textColor = [16, 185, 129] // Emerald green
+          else if (data.column.index === 2)
+            data.cell.styles.textColor = [245, 158, 11] // Amber
+          else if (data.column.index === 3)
+            data.cell.styles.textColor = [239, 68, 68] // Red
+          else if (data.column.index === 4)
+            data.cell.styles.textColor = [37, 99, 235] // Blue
         }
       },
       theme: 'grid',
@@ -636,7 +738,7 @@ export function GateAttendance() {
     const splitSummary = doc.splitTextToSize(analysisSummary, summaryWidth - 14)
     const lineHeight = 4.2
     const boxPadding = 4
-    const boxHeight = (splitSummary.length * lineHeight) + (boxPadding * 2)
+    const boxHeight = splitSummary.length * lineHeight + boxPadding * 2
 
     // Background card for analysis
     doc.setDrawColor(226, 232, 240)
@@ -661,7 +763,17 @@ export function GateAttendance() {
       doc.setTextColor(30, 41, 59)
       doc.text('REKAPITULASI KEHADIRAN GERBANG PER KELAS', 14, currentY)
 
-      const classTableHead = [['No', 'Kelas', 'Total', 'Hadir Tepat', 'Terlambat', 'Alpha', '% Kehadiran']]
+      const classTableHead = [
+        [
+          'No',
+          'Kelas',
+          'Total',
+          'Hadir Tepat',
+          'Terlambat',
+          'Alpha',
+          '% Kehadiran',
+        ],
+      ]
       const classTableBody = classAnalysis.map((c, i) => [
         i + 1,
         c.className,
@@ -680,13 +792,20 @@ export function GateAttendance() {
         columnStyles: {
           1: { halign: 'left', fontStyle: 'bold' },
         },
-        headStyles: { fillColor: [40, 53, 147], textColor: 255, fontStyle: 'bold' },
+        headStyles: {
+          fillColor: [40, 53, 147],
+          textColor: 255,
+          fontStyle: 'bold',
+        },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         didParseCell: (data: any) => {
           if (data.section === 'body') {
-            if (data.column.index === 3) data.cell.styles.textColor = [16, 185, 129]
-            else if (data.column.index === 4) data.cell.styles.textColor = [245, 158, 11]
-            else if (data.column.index === 5) data.cell.styles.textColor = [239, 68, 68]
+            if (data.column.index === 3)
+              data.cell.styles.textColor = [16, 185, 129]
+            else if (data.column.index === 4)
+              data.cell.styles.textColor = [245, 158, 11]
+            else if (data.column.index === 5)
+              data.cell.styles.textColor = [239, 68, 68]
             else if (data.column.index === 6) {
               const rawPct = parseFloat(data.cell.raw)
               if (rawPct >= 80) data.cell.styles.textColor = [16, 185, 129]
@@ -714,7 +833,9 @@ export function GateAttendance() {
     doc.setTextColor(30, 41, 59)
     doc.text('DAFTAR RINCI PRESENSI SISWA GERBANG', 14, currentY)
 
-    const studentTableHead = [['No', 'NIS', 'Nama Siswa', 'Kelas', 'Jam Masuk', 'Jam Keluar', 'Status']]
+    const studentTableHead = [
+      ['No', 'NIS', 'Nama Siswa', 'Kelas', 'Jam Masuk', 'Jam Keluar', 'Status'],
+    ]
     const studentTableBody = finalFilteredLogs.map((log, idx) => [
       idx + 1,
       log.user.profile?.nomorInduk || '-',
@@ -730,7 +851,12 @@ export function GateAttendance() {
       body: studentTableBody,
       startY: currentY + 2.5,
       styles: { fontSize: 7.5, cellPadding: 1.8 },
-      headStyles: { fillColor: [30, 41, 59], textColor: 255, halign: 'center', fontStyle: 'bold' },
+      headStyles: {
+        fillColor: [30, 41, 59],
+        textColor: 255,
+        halign: 'center',
+        fontStyle: 'bold',
+      },
       columnStyles: {
         0: { halign: 'center', cellWidth: 10 },
         1: { halign: 'center', cellWidth: 26 },
@@ -774,7 +900,11 @@ export function GateAttendance() {
     doc.setTextColor(30, 41, 59)
     doc.text(`${dateFormatted}`, pageWidth - 65, signY)
     doc.text(`Petugas Gerbang / Piket,`, pageWidth - 65, signY + 5)
-    doc.text(`( ........................................ )`, pageWidth - 65, signY + 26)
+    doc.text(
+      `( ........................................ )`,
+      pageWidth - 65,
+      signY + 26
+    )
 
     doc.text(`Mengetahui,`, 22, signY)
     doc.text(`Kepala Sekolah / Waka Kesiswaan,`, 22, signY + 5)
@@ -811,9 +941,18 @@ export function GateAttendance() {
     doc.text(`Nama Siswa   : ${log.user.name}`, 20, 43)
     doc.text(`NIS / NIP     : ${log.user.profile?.nomorInduk || '-'}`, 20, 51)
     doc.text(`Kelas         : ${log.user.profile?.class?.name || '-'}`, 20, 59)
-    doc.text(`No. WA Ortu   : ${log.user.profile?.guardianPhone || '-'}`, 20, 67)
+    doc.text(
+      `No. WA Ortu   : ${log.user.profile?.guardianPhone || '-'}`,
+      20,
+      67
+    )
 
-    const tableColumn = ['Tanggal', 'Jam Masuk', 'Jam Keluar', 'Status Presensi']
+    const tableColumn = [
+      'Tanggal',
+      'Jam Masuk',
+      'Jam Keluar',
+      'Status Presensi',
+    ]
     const tableRows = [
       [
         format(new Date(log.date), 'dd/MM/yyyy'),
@@ -829,7 +968,9 @@ export function GateAttendance() {
       startY: 85,
     })
 
-    doc.save(`Presensi_${log.user.name.replace(/\s+/g, '_')}_${selectedDate}.pdf`)
+    doc.save(
+      `Presensi_${log.user.name.replace(/\s+/g, '_')}_${selectedDate}.pdf`
+    )
   }
 
   return (
@@ -837,7 +978,9 @@ export function GateAttendance() {
       <Header fixed>
         <div className='flex items-center gap-2'>
           <Clock className='h-5 w-5 text-primary' />
-          <h1 className='text-base font-semibold sm:text-lg'>Dashboard Absensi Gerbang</h1>
+          <h1 className='text-base font-semibold sm:text-lg'>
+            Dashboard Absensi Gerbang
+          </h1>
         </div>
         <div className='ml-auto flex items-center space-x-4'>
           <ThemeSwitch />
@@ -853,13 +996,17 @@ export function GateAttendance() {
               <h2 className='text-2xl font-bold tracking-tight'>
                 Dashboard Absensi Gerbang
               </h2>
-              <Badge variant='outline' className='flex items-center gap-1.5 border-emerald-500/40 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'>
-                <span className='h-2 w-2 rounded-full bg-emerald-500 animate-pulse' />
+              <Badge
+                variant='outline'
+                className='flex items-center gap-1.5 border-emerald-500/40 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
+              >
+                <span className='h-2 w-2 animate-pulse rounded-full bg-emerald-500' />
                 Real-Time
               </Badge>
             </div>
             <p className='text-sm text-muted-foreground'>
-              Pantau kehadiran siswa secara real-time dari pintu gerbang sekolah.
+              Pantau kehadiran siswa secara real-time dari pintu gerbang
+              sekolah.
             </p>
           </div>
 
@@ -870,14 +1017,20 @@ export function GateAttendance() {
               onClick={() => fetchData(true)}
               disabled={refreshing}
             >
-              <RefreshCw className={`mr-1.5 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw
+                className={`mr-1.5 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`}
+              />
               Segarkan
             </Button>
             <Button
               variant={autoRefresh ? 'default' : 'secondary'}
               size='sm'
               onClick={() => setAutoRefresh(!autoRefresh)}
-              title={autoRefresh ? 'Auto-refresh aktif setiap 10 detik' : 'Auto-refresh dinonaktifkan'}
+              title={
+                autoRefresh
+                  ? 'Auto-refresh aktif setiap 10 detik'
+                  : 'Auto-refresh dinonaktifkan'
+              }
             >
               <Activity className='mr-1.5 h-4 w-4' />
               {autoRefresh ? 'Auto Refresh: ON' : 'Auto Refresh: OFF'}
@@ -894,10 +1047,12 @@ export function GateAttendance() {
         {/* Filter Controls Bar */}
         <Card className='border bg-card shadow-sm'>
           <CardContent className='p-4'>
-            <div className='grid gap-4 sm:grid-cols-2 md:grid-cols-4 items-end'>
+            <div className='grid items-end gap-4 sm:grid-cols-2 md:grid-cols-4'>
               {/* Date Filter */}
               <div className='space-y-1.5'>
-                <label className='text-xs font-semibold text-muted-foreground'>Tanggal Presensi</label>
+                <label className='text-xs font-semibold text-muted-foreground'>
+                  Tanggal Presensi
+                </label>
                 <div className='flex gap-1'>
                   <Input
                     type='date'
@@ -909,7 +1064,9 @@ export function GateAttendance() {
                     variant='outline'
                     size='sm'
                     type='button'
-                    onClick={() => setSelectedDate(format(getServerTime(), 'yyyy-MM-dd'))}
+                    onClick={() =>
+                      setSelectedDate(format(getServerTime(), 'yyyy-MM-dd'))
+                    }
                     title='Kembali ke hari ini'
                     className='px-2.5 text-xs'
                   >
@@ -920,9 +1077,11 @@ export function GateAttendance() {
 
               {/* Class Filter */}
               <div className='space-y-1.5'>
-                <label className='text-xs font-semibold text-muted-foreground'>Filter Kelas</label>
+                <label className='text-xs font-semibold text-muted-foreground'>
+                  Filter Kelas
+                </label>
                 <select
-                  className='w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring'
+                  className='w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:ring-1 focus:ring-ring focus:outline-none'
                   value={selectedClassId}
                   onChange={(e) => setSelectedClassId(e.target.value)}
                 >
@@ -938,11 +1097,17 @@ export function GateAttendance() {
               {/* Quick Info */}
               <div className='space-y-1 text-xs text-muted-foreground'>
                 <div>
-                  Hari: <span className='font-semibold text-foreground'>{dateFormatted}</span>
+                  Hari:{' '}
+                  <span className='font-semibold text-foreground'>
+                    {dateFormatted}
+                  </span>
                 </div>
                 {lastUpdated && (
                   <div>
-                    Update Terakhir: <span className='font-mono font-medium'>{lastUpdated} WIB</span>
+                    Update Terakhir:{' '}
+                    <span className='font-mono font-medium'>
+                      {lastUpdated} WIB
+                    </span>
                   </div>
                 )}
               </div>
@@ -984,8 +1149,10 @@ export function GateAttendance() {
               <Users className='h-4 w-4 text-muted-foreground' />
             </CardHeader>
             <CardContent>
-              <div className='text-3xl font-bold tracking-tight'>{totalSiswa}</div>
-              <p className='text-xs text-muted-foreground mt-1'>
+              <div className='text-3xl font-bold tracking-tight'>
+                {totalSiswa}
+              </div>
+              <p className='mt-1 text-xs text-muted-foreground'>
                 Siswa terdaftar
               </p>
             </CardContent>
@@ -1003,10 +1170,15 @@ export function GateAttendance() {
               <CheckCircle2 className='h-4 w-4 text-emerald-500' />
             </CardHeader>
             <CardContent>
-              <div className='text-3xl font-bold text-emerald-600 dark:text-emerald-400'>{totalHadir}</div>
-              <p className='text-xs text-muted-foreground mt-1'>
+              <div className='text-3xl font-bold text-emerald-600 dark:text-emerald-400'>
+                {totalHadir}
+              </div>
+              <p className='mt-1 text-xs text-muted-foreground'>
                 <span className='font-semibold text-emerald-600 dark:text-emerald-400'>
-                  {totalSiswa > 0 ? ((totalHadir / totalSiswa) * 100).toFixed(1) : 0}%
+                  {totalSiswa > 0
+                    ? ((totalHadir / totalSiswa) * 100).toFixed(1)
+                    : 0}
+                  %
                 </span>{' '}
                 tepat waktu
               </p>
@@ -1025,10 +1197,15 @@ export function GateAttendance() {
               <Clock className='h-4 w-4 text-amber-500' />
             </CardHeader>
             <CardContent>
-              <div className='text-3xl font-bold text-amber-600 dark:text-amber-400'>{totalTerlambat}</div>
-              <p className='text-xs text-muted-foreground mt-1'>
+              <div className='text-3xl font-bold text-amber-600 dark:text-amber-400'>
+                {totalTerlambat}
+              </div>
+              <p className='mt-1 text-xs text-muted-foreground'>
                 <span className='font-semibold text-amber-600 dark:text-amber-400'>
-                  {totalSiswa > 0 ? ((totalTerlambat / totalSiswa) * 100).toFixed(1) : 0}%
+                  {totalSiswa > 0
+                    ? ((totalTerlambat / totalSiswa) * 100).toFixed(1)
+                    : 0}
+                  %
                 </span>{' '}
                 lewat jam masuk
               </p>
@@ -1047,10 +1224,15 @@ export function GateAttendance() {
               <XCircle className='h-4 w-4 text-rose-500' />
             </CardHeader>
             <CardContent>
-              <div className='text-3xl font-bold text-rose-600 dark:text-rose-400'>{totalTidakHadir}</div>
-              <p className='text-xs text-muted-foreground mt-1'>
+              <div className='text-3xl font-bold text-rose-600 dark:text-rose-400'>
+                {totalTidakHadir}
+              </div>
+              <p className='mt-1 text-xs text-muted-foreground'>
                 <span className='font-semibold text-rose-600 dark:text-rose-400'>
-                  {totalSiswa > 0 ? ((totalTidakHadir / totalSiswa) * 100).toFixed(1) : 0}%
+                  {totalSiswa > 0
+                    ? ((totalTidakHadir / totalSiswa) * 100).toFixed(1)
+                    : 0}
+                  %
                 </span>{' '}
                 belum tap gerbang
               </p>
@@ -1060,7 +1242,9 @@ export function GateAttendance() {
           {/* Tingkat Partisipasi Keseluruhan */}
           <Card>
             <CardHeader className='flex flex-row items-center justify-between pb-2'>
-              <CardTitle className='text-sm font-medium'>Kehadiran Total</CardTitle>
+              <CardTitle className='text-sm font-medium'>
+                Kehadiran Total
+              </CardTitle>
               <TrendingUp className='h-4 w-4 text-primary' />
             </CardHeader>
             <CardContent>
@@ -1077,9 +1261,9 @@ export function GateAttendance() {
                   {performanceLabel}
                 </Badge>
               </div>
-              <div className='w-full bg-muted rounded-full h-2 mt-3 overflow-hidden'>
+              <div className='mt-3 h-2 w-full overflow-hidden rounded-full bg-muted'>
                 <div
-                  className='bg-primary h-2 rounded-full transition-all duration-500'
+                  className='h-2 rounded-full bg-primary transition-all duration-500'
                   style={{ width: `${attendanceRate}%` }}
                 />
               </div>
@@ -1087,8 +1271,11 @@ export function GateAttendance() {
           </Card>
         </div>
 
+        {/* Grafik Analisis Kehadiran Gerbang (Tren 4 Garis) */}
+        <GateAttendanceChart selectedClassId={selectedClassId} />
+
         {/* Panel Dashboard Analisa Kehadiran Gerbang */}
-        <Card className='border-l-4 border-l-primary bg-card/60 backdrop-blur-sm shadow-sm'>
+        <Card className='border-l-4 border-l-primary bg-card/60 shadow-sm backdrop-blur-sm'>
           <CardHeader className='pb-2'>
             <div className='flex items-center gap-2'>
               <BarChart3 className='h-5 w-5 text-primary' />
@@ -1102,14 +1289,14 @@ export function GateAttendance() {
           </CardHeader>
           <CardContent className='space-y-4'>
             {/* Narrative Summary */}
-            <p className='text-sm leading-relaxed text-foreground/90 bg-muted/40 p-3.5 rounded-lg border'>
+            <p className='rounded-lg border bg-muted/40 p-3.5 text-sm leading-relaxed text-foreground/90'>
               {analysisSummary}
             </p>
 
             {/* Quick Insights Row */}
             <div className='grid gap-3 sm:grid-cols-3'>
-              <div className='p-3 rounded-lg border bg-background text-xs space-y-1'>
-                <div className='text-muted-foreground flex items-center gap-1.5'>
+              <div className='space-y-1 rounded-lg border bg-background p-3 text-xs'>
+                <div className='flex items-center gap-1.5 text-muted-foreground'>
                   <CheckCircle2 className='h-3.5 w-3.5 text-emerald-500' />
                   <span>Ketepatan Waktu</span>
                 </div>
@@ -1121,12 +1308,12 @@ export function GateAttendance() {
                 </div>
               </div>
 
-              <div className='p-3 rounded-lg border bg-background text-xs space-y-1'>
-                <div className='text-muted-foreground flex items-center gap-1.5'>
+              <div className='space-y-1 rounded-lg border bg-background p-3 text-xs'>
+                <div className='flex items-center gap-1.5 text-muted-foreground'>
                   <Clock className='h-3.5 w-3.5 text-primary' />
                   <span>Rata-Rata Waktu Masuk</span>
                 </div>
-                <div className='text-lg font-bold font-mono'>
+                <div className='font-mono text-lg font-bold'>
                   {averageCheckInTime}
                 </div>
                 <div className='text-[11px] text-muted-foreground'>
@@ -1134,8 +1321,8 @@ export function GateAttendance() {
                 </div>
               </div>
 
-              <div className='p-3 rounded-lg border bg-background text-xs space-y-1'>
-                <div className='text-muted-foreground flex items-center gap-1.5'>
+              <div className='space-y-1 rounded-lg border bg-background p-3 text-xs'>
+                <div className='flex items-center gap-1.5 text-muted-foreground'>
                   <Users className='h-3.5 w-3.5 text-blue-500' />
                   <span>Siswa Pulang Tercatat</span>
                 </div>
@@ -1151,16 +1338,17 @@ export function GateAttendance() {
             {/* Per-Class Analysis Breakdown */}
             {classAnalysis.length > 0 && (
               <div>
-                <h4 className='text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2.5 flex items-center gap-1.5'>
-                  <Layers className='h-3.5 w-3.5' /> Rekapitulasi Presensi per Kelas
+                <h4 className='mb-2.5 flex items-center gap-1.5 text-xs font-semibold tracking-wider text-muted-foreground uppercase'>
+                  <Layers className='h-3.5 w-3.5' /> Rekapitulasi Presensi per
+                  Kelas
                 </h4>
                 <div className='grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'>
                   {classAnalysis.map((c) => (
                     <div
                       key={c.className}
-                      className='p-2.5 rounded-md border bg-background/80 text-xs space-y-1.5'
+                      className='space-y-1.5 rounded-md border bg-background/80 p-2.5 text-xs'
                     >
-                      <div className='flex justify-between items-center font-semibold'>
+                      <div className='flex items-center justify-between font-semibold'>
                         <span>{c.className}</span>
                         <span
                           className={
@@ -1174,12 +1362,18 @@ export function GateAttendance() {
                           {c.percentage}%
                         </span>
                       </div>
-                      <div className='flex justify-between text-muted-foreground text-[11px]'>
-                        <span className='text-emerald-600 dark:text-emerald-400'>Tepat: {c.hadir}</span>
-                        <span className='text-amber-600 dark:text-amber-400'>Telat: {c.terlambat}</span>
-                        <span className='text-rose-600 dark:text-rose-400'>Alpa: {c.alpha}</span>
+                      <div className='flex justify-between text-[11px] text-muted-foreground'>
+                        <span className='text-emerald-600 dark:text-emerald-400'>
+                          Tepat: {c.hadir}
+                        </span>
+                        <span className='text-amber-600 dark:text-amber-400'>
+                          Telat: {c.terlambat}
+                        </span>
+                        <span className='text-rose-600 dark:text-rose-400'>
+                          Alpa: {c.alpha}
+                        </span>
                       </div>
-                      <div className='w-full bg-muted rounded-full h-1.5 overflow-hidden'>
+                      <div className='h-1.5 w-full overflow-hidden rounded-full bg-muted'>
                         <div
                           className={`h-1.5 rounded-full ${
                             c.percentage >= 80
@@ -1200,27 +1394,41 @@ export function GateAttendance() {
         </Card>
 
         {/* Toolbar: Filter Tabs & Search */}
-        <div className='flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mt-2'>
+        <div className='mt-2 flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center'>
           <Tabs value={activeStatusTab} onValueChange={setActiveStatusTab}>
             <TabsList>
-              <TabsTrigger value='ALL'>Semua ({allStudentsWithGateStatus.length})</TabsTrigger>
-              <TabsTrigger value='HADIR' className='text-emerald-700 dark:text-emerald-400'>
+              <TabsTrigger value='ALL'>
+                Semua ({allStudentsWithGateStatus.length})
+              </TabsTrigger>
+              <TabsTrigger
+                value='HADIR'
+                className='text-emerald-700 dark:text-emerald-400'
+              >
                 Hadir Tepat ({totalHadir})
               </TabsTrigger>
-              <TabsTrigger value='TERLAMBAT' className='text-amber-700 dark:text-amber-400'>
+              <TabsTrigger
+                value='TERLAMBAT'
+                className='text-amber-700 dark:text-amber-400'
+              >
                 Terlambat ({totalTerlambat})
               </TabsTrigger>
-              <TabsTrigger value='PULANG' className='text-blue-700 dark:text-blue-400'>
+              <TabsTrigger
+                value='PULANG'
+                className='text-blue-700 dark:text-blue-400'
+              >
                 Pulang ({totalPulang})
               </TabsTrigger>
-              <TabsTrigger value='ALPHA' className='text-rose-700 dark:text-rose-400'>
+              <TabsTrigger
+                value='ALPHA'
+                className='text-rose-700 dark:text-rose-400'
+              >
                 Alpa ({totalTidakHadir})
               </TabsTrigger>
             </TabsList>
           </Tabs>
 
           <div className='relative w-full sm:w-72'>
-            <Search className='absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground' />
+            <Search className='absolute top-2.5 left-2.5 h-4 w-4 text-muted-foreground' />
             <Input
               type='text'
               placeholder='Cari nama atau NIS siswa...'
@@ -1235,7 +1443,7 @@ export function GateAttendance() {
         <div className='w-full'>
           {loading ? (
             <div className='py-12 text-center text-muted-foreground'>
-              <RefreshCw className='h-6 w-6 animate-spin mx-auto mb-2 text-primary' />
+              <RefreshCw className='mx-auto mb-2 h-6 w-6 animate-spin text-primary' />
               Memuat data absensi gerbang...
             </div>
           ) : (
@@ -1244,7 +1452,10 @@ export function GateAttendance() {
         </div>
 
         {/* Student Detail Modal */}
-        <Dialog open={!!selectedLog} onOpenChange={(open) => !open && setSelectedLog(null)}>
+        <Dialog
+          open={!!selectedLog}
+          onOpenChange={(open) => !open && setSelectedLog(null)}
+        >
           {selectedLog && (
             <DialogContent className='max-w-md'>
               <DialogHeader>
@@ -1253,41 +1464,59 @@ export function GateAttendance() {
 
               <div className='space-y-4 py-2 text-sm'>
                 {/* Profile Header */}
-                <div className='flex items-center gap-4 p-3 bg-muted rounded-lg'>
+                <div className='flex items-center gap-4 rounded-lg bg-muted p-3'>
                   <Avatar className='h-12 w-12'>
-                    <AvatarImage src={selectedLog.user.profile?.avatarUrl || ''} />
-                    <AvatarFallback>{selectedLog.user.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                    <AvatarImage
+                      src={selectedLog.user.profile?.avatarUrl || ''}
+                    />
+                    <AvatarFallback>
+                      {selectedLog.user.name.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
                   </Avatar>
                   <div>
-                    <h4 className='font-bold text-base'>{selectedLog.user.name}</h4>
+                    <h4 className='text-base font-bold'>
+                      {selectedLog.user.name}
+                    </h4>
                     <p className='text-xs text-muted-foreground'>
-                      NIS: {selectedLog.user.profile?.nomorInduk || '-'} | Kelas: {selectedLog.user.profile?.class?.name || '-'}
+                      NIS: {selectedLog.user.profile?.nomorInduk || '-'} |
+                      Kelas: {selectedLog.user.profile?.class?.name || '-'}
                     </p>
-                    <div className='flex items-center gap-1 mt-1 text-xs text-muted-foreground'>
+                    <div className='mt-1 flex items-center gap-1 text-xs text-muted-foreground'>
                       <Phone className='h-3 w-3' />
-                      Ortu: {selectedLog.user.profile?.guardianPhone || 'Belum diisi'}
+                      Ortu:{' '}
+                      {selectedLog.user.profile?.guardianPhone || 'Belum diisi'}
                     </div>
                   </div>
                 </div>
 
                 {/* Status Badges */}
                 <div className='grid grid-cols-2 gap-2 text-center'>
-                  <div className='p-2 border rounded-md'>
-                    <span className='text-xs text-muted-foreground block'>Jam Masuk</span>
-                    <span className='font-bold font-mono text-sm'>
-                      {selectedLog.checkInTime ? format(new Date(selectedLog.checkInTime), 'HH:mm:ss') : '-'}
+                  <div className='rounded-md border p-2'>
+                    <span className='block text-xs text-muted-foreground'>
+                      Jam Masuk
+                    </span>
+                    <span className='font-mono text-sm font-bold'>
+                      {selectedLog.checkInTime
+                        ? format(new Date(selectedLog.checkInTime), 'HH:mm:ss')
+                        : '-'}
                     </span>
                   </div>
-                  <div className='p-2 border rounded-md'>
-                    <span className='text-xs text-muted-foreground block'>Jam Keluar</span>
-                    <span className='font-bold font-mono text-sm'>
-                      {selectedLog.checkOutTime ? format(new Date(selectedLog.checkOutTime), 'HH:mm:ss') : '-'}
+                  <div className='rounded-md border p-2'>
+                    <span className='block text-xs text-muted-foreground'>
+                      Jam Keluar
+                    </span>
+                    <span className='font-mono text-sm font-bold'>
+                      {selectedLog.checkOutTime
+                        ? format(new Date(selectedLog.checkOutTime), 'HH:mm:ss')
+                        : '-'}
                     </span>
                   </div>
                 </div>
 
-                <div className='p-2.5 border rounded-md text-xs text-center'>
-                  <span className='text-muted-foreground block mb-1'>Status Presensi</span>
+                <div className='rounded-md border p-2.5 text-center text-xs'>
+                  <span className='mb-1 block text-muted-foreground'>
+                    Status Presensi
+                  </span>
                   <Badge
                     className={
                       selectedLog.status === 'HADIR'
@@ -1305,24 +1534,38 @@ export function GateAttendance() {
 
                 {/* WA Delivery History */}
                 <div className='space-y-2 border-t pt-3'>
-                  <h5 className='font-semibold text-xs text-muted-foreground uppercase tracking-wider'>
+                  <h5 className='text-xs font-semibold tracking-wider text-muted-foreground uppercase'>
                     Riwayat Pengiriman WA
                   </h5>
                   {loadingWaLogs ? (
-                    <p className='text-xs text-muted-foreground'>Memuat riwayat WA...</p>
+                    <p className='text-xs text-muted-foreground'>
+                      Memuat riwayat WA...
+                    </p>
                   ) : studentWaLogs.length === 0 ? (
-                    <p className='text-xs text-muted-foreground italic'>Belum ada notifikasi WA terkirim.</p>
+                    <p className='text-xs text-muted-foreground italic'>
+                      Belum ada notifikasi WA terkirim.
+                    </p>
                   ) : (
-                    <div className='space-y-1.5 max-h-32 overflow-y-auto pr-1'>
+                    <div className='max-h-32 space-y-1.5 overflow-y-auto pr-1'>
                       {studentWaLogs.map((wa) => (
-                        <div key={wa.id} className='flex items-center justify-between text-xs p-2 rounded bg-muted/60'>
+                        <div
+                          key={wa.id}
+                          className='flex items-center justify-between rounded bg-muted/60 p-2 text-xs'
+                        >
                           <div>
-                            <span className='font-semibold'>{wa.eventType}</span>
-                            <span className='text-[10px] text-muted-foreground ml-2'>
+                            <span className='font-semibold'>
+                              {wa.eventType}
+                            </span>
+                            <span className='ml-2 text-[10px] text-muted-foreground'>
                               {format(new Date(wa.createdAt), 'HH:mm')}
                             </span>
                           </div>
-                          <Badge variant={wa.status === 'SENT' ? 'default' : 'destructive'} className='text-[10px]'>
+                          <Badge
+                            variant={
+                              wa.status === 'SENT' ? 'default' : 'destructive'
+                            }
+                            className='text-[10px]'
+                          >
                             {wa.status}
                           </Badge>
                         </div>
@@ -1338,7 +1581,8 @@ export function GateAttendance() {
                   size='sm'
                   onClick={() => downloadIndividualReportPdf(selectedLog)}
                 >
-                  <FileText className='mr-1.5 h-4 w-4' /> Download PDF Individual
+                  <FileText className='mr-1.5 h-4 w-4' /> Download PDF
+                  Individual
                 </Button>
                 <Button size='sm' onClick={() => setSelectedLog(null)}>
                   Tutup
