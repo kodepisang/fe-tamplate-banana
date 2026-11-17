@@ -357,10 +357,15 @@ export function SettingsWaMonitor() {
 
       {/* Filter & Log Table */}
       <div className='space-y-4'>
-        <div className='flex items-center justify-between'>
-          <h4 className='font-semibold text-md'>Log Pengiriman Terbaru (50 Terakhir)</h4>
-          <div className='flex items-center gap-2'>
-            <Label className='text-xs'>Filter Status:</Label>
+        <div className='flex flex-col sm:flex-row sm:items-center justify-between gap-3'>
+          <div>
+            <h4 className='font-semibold text-md text-foreground'>Log Pengiriman Terbaru (50 Terakhir)</h4>
+            <p className='text-xs text-muted-foreground'>
+              Daftar pengiriman pesan WhatsApp terbaru beserta status, log galat, dan opsi penanganan.
+            </p>
+          </div>
+          <div className='flex items-center gap-2 self-start sm:self-auto'>
+            <Label className='text-xs whitespace-nowrap'>Filter Status:</Label>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className='w-[140px] h-8 text-xs'>
                 <SelectValue placeholder='Semua Status' />
@@ -378,7 +383,7 @@ export function SettingsWaMonitor() {
 
         {/* Banner Seleksi / Batch Action */}
         {selectedIds.length > 0 && (
-          <div className='flex flex-wrap items-center justify-between gap-3 p-3 bg-rose-50/90 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-900 rounded-lg shadow-sm'>
+          <div className='flex flex-wrap items-center justify-between gap-3 p-3 bg-rose-50/90 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-900 rounded-lg shadow-xs'>
             <div className='flex items-center gap-2.5 text-xs font-semibold text-rose-900 dark:text-rose-100'>
               <span className='flex h-6 w-6 items-center justify-center rounded-full bg-rose-200 dark:bg-rose-800 text-xs font-bold text-rose-900 dark:text-rose-100'>
                 {selectedIds.length}
@@ -399,7 +404,7 @@ export function SettingsWaMonitor() {
               <Button
                 variant='destructive'
                 size='sm'
-                className='h-7 text-xs bg-rose-600 hover:bg-rose-700 font-semibold'
+                className='h-7 text-xs bg-rose-600 hover:bg-rose-700 font-semibold shadow-xs'
                 onClick={promptDeleteBatch}
               >
                 <Trash2 className='mr-1.5 h-3.5 w-3.5' /> Hapus ({selectedIds.length}) Log Terpilih
@@ -408,137 +413,154 @@ export function SettingsWaMonitor() {
           </div>
         )}
 
-        <div className='rounded-md border'>
-          <table className='w-full text-xs text-left'>
-            <thead className='bg-muted text-muted-foreground uppercase'>
-              <tr>
-                <th className='p-3 w-10 text-center'>
-                  <Checkbox
-                    checked={
-                      logs.length > 0 && selectedIds.length === logs.length
-                        ? true
-                        : selectedIds.length > 0
-                        ? 'indeterminate'
-                        : false
+        {/* Responsive Table Container with Horizontal Scroll */}
+        <div className='rounded-xl border bg-card shadow-xs overflow-hidden'>
+          <div className='overflow-x-auto w-full'>
+            <table className='w-full text-xs text-left border-collapse'>
+              <thead className='bg-muted/80 text-muted-foreground uppercase tracking-wider font-semibold border-b'>
+                <tr>
+                  <th className='p-3 w-10 text-center'>
+                    <Checkbox
+                      checked={
+                        logs.length > 0 && selectedIds.length === logs.length
+                          ? true
+                          : selectedIds.length > 0
+                          ? 'indeterminate'
+                          : false
+                      }
+                      onCheckedChange={handleSelectAll}
+                      aria-label='Pilih semua log'
+                    />
+                  </th>
+                  <th className='p-3 whitespace-nowrap min-w-[110px]'>Waktu</th>
+                  <th className='p-3 min-w-[170px]'>Penerima / Siswa</th>
+                  <th className='p-3 whitespace-nowrap min-w-[125px]'>No. WA</th>
+                  <th className='p-3 whitespace-nowrap min-w-[90px]'>Event</th>
+                  <th className='p-3 whitespace-nowrap min-w-[90px]'>Status</th>
+                  <th className='p-3 whitespace-nowrap text-center min-w-[65px]'>Attempt</th>
+                  <th className='p-3 min-w-[200px]'>Catatan / Error</th>
+                  <th className='p-3 text-right pr-4 whitespace-nowrap min-w-[140px]'>Aksi</th>
+                </tr>
+              </thead>
+              <tbody className='divide-y'>
+                {loading ? (
+                  <tr>
+                    <td colSpan={9} className='p-6 text-center text-muted-foreground'>
+                      Memuat log pengiriman WhatsApp...
+                    </td>
+                  </tr>
+                ) : logs.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className='p-6 text-center text-muted-foreground'>
+                      Belum ada log pengiriman.
+                    </td>
+                  </tr>
+                ) : (
+                  logs.map((log) => {
+                    let badgeClass = ''
+                    if (log.status === 'SENT') {
+                      badgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
+                    } else if (log.status === 'FAILED') {
+                      badgeClass = 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800'
+                    } else if (log.status === 'QUEUED') {
+                      badgeClass = 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
+                    } else if (log.status === 'SKIPPED') {
+                      badgeClass = 'bg-gray-100 text-gray-800 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'
                     }
-                    onCheckedChange={handleSelectAll}
-                    aria-label='Pilih semua log'
-                  />
-                </th>
-                <th className='p-3'>Waktu</th>
-                <th className='p-3'>Penerima / Siswa</th>
-                <th className='p-3'>No. WA</th>
-                <th className='p-3'>Event</th>
-                <th className='p-3'>Status</th>
-                <th className='p-3'>Attempt</th>
-                <th className='p-3'>Catatan / Error</th>
-                <th className='p-3 text-right'>Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={9} className='p-4 text-center'>
-                    Memuat log...
-                  </td>
-                </tr>
-              ) : logs.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className='p-4 text-center text-muted-foreground'>
-                    Belum ada log pengiriman.
-                  </td>
-                </tr>
-              ) : (
-                logs.map((log) => {
-                  let badgeClass = ''
-                  if (log.status === 'SENT') {
-                    badgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                  } else if (log.status === 'FAILED') {
-                    badgeClass = 'bg-rose-100 text-rose-800 border-rose-300'
-                  } else if (log.status === 'QUEUED') {
-                    badgeClass = 'bg-amber-100 text-amber-800 border-amber-300'
-                  } else if (log.status === 'SKIPPED') {
-                    badgeClass = 'bg-gray-100 text-gray-800 border-gray-300'
-                  }
 
-                  const isChecked = selectedIds.includes(log.id)
+                    const isChecked = selectedIds.includes(log.id)
 
-                  return (
-                    <tr
-                      key={log.id}
-                      className={`border-b transition-colors hover:bg-muted/50 ${
-                        isChecked ? 'bg-rose-50/40 dark:bg-rose-950/20' : ''
-                      }`}
-                    >
-                      <td className='p-3 text-center'>
-                        <Checkbox
-                          checked={isChecked}
-                          onCheckedChange={() => handleToggleSelect(log.id)}
-                          aria-label={`Pilih log ${log.id}`}
-                        />
-                      </td>
-                      <td className='p-3 font-mono'>
-                        {format(new Date(log.createdAt), 'dd/MM HH:mm:ss')}
-                      </td>
-                      <td className='p-3'>
-                        <div className='font-medium text-foreground'>
-                          {log.studentName || (log.studentId === 0 ? 'SYSTEM' : `Siswa #${log.studentId}`)}
-                        </div>
-                        <div className='text-[10px] text-muted-foreground font-mono'>
-                          {log.className && log.className !== '-' ? `${log.className} • ` : ''}
-                          {log.studentNis && log.studentNis !== '-' ? `NIS: ${log.studentNis}` : `ID: ${log.studentId}`}
-                        </div>
-                      </td>
-                      <td className='p-3 font-mono'>{log.phoneNumber}</td>
-                      <td className='p-3 font-semibold'>{log.eventType}</td>
-                      <td className='p-3'>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badgeClass}`}>
-                          {log.status}
-                        </span>
-                      </td>
-                      <td className='p-3'>{log.attempt}</td>
-                      <td className='p-3 text-muted-foreground max-w-[200px] truncate' title={log.errorMsg || ''}>
-                        {log.errorMsg || '-'}
-                      </td>
-                      <td className='p-3 text-right'>
-                        <div className='flex items-center justify-end gap-1'>
-                          <Button
-                            size='sm'
-                            variant='outline'
-                            className='h-7 px-2 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:hover:bg-blue-950/40'
-                            onClick={() => handleOpenDetail(log)}
-                            title='Lihat Detail & Analisa'
+                    return (
+                      <tr
+                        key={log.id}
+                        className={`transition-colors hover:bg-muted/50 ${
+                          isChecked ? 'bg-rose-50/50 dark:bg-rose-950/20' : ''
+                        }`}
+                      >
+                        <td className='p-3 text-center'>
+                          <Checkbox
+                            checked={isChecked}
+                            onCheckedChange={() => handleToggleSelect(log.id)}
+                            aria-label={`Pilih log ${log.id}`}
+                          />
+                        </td>
+                        <td className='p-3 font-mono whitespace-nowrap text-muted-foreground'>
+                          {format(new Date(log.createdAt), 'dd/MM HH:mm:ss')}
+                        </td>
+                        <td className='p-3 min-w-[170px] max-w-[220px]'>
+                          <div
+                            className='font-medium text-foreground truncate'
+                            title={log.studentName || (log.studentId === 0 ? 'SYSTEM' : `Siswa #${log.studentId}`)}
                           >
-                            <Eye className='mr-1 h-3.5 w-3.5' /> Detail
-                          </Button>
-                          {log.status === 'FAILED' && (
+                            {log.studentName || (log.studentId === 0 ? 'SYSTEM' : `Siswa #${log.studentId}`)}
+                          </div>
+                          <div className='text-[10px] text-muted-foreground font-mono truncate'>
+                            {log.className && log.className !== '-' ? `${log.className} • ` : ''}
+                            {log.studentNis && log.studentNis !== '-' ? `NIS: ${log.studentNis}` : `ID: ${log.studentId}`}
+                          </div>
+                        </td>
+                        <td className='p-3 font-mono whitespace-nowrap font-medium text-foreground'>
+                          {log.phoneNumber}
+                        </td>
+                        <td className='p-3 font-semibold whitespace-nowrap'>
+                          <span className='font-mono text-xs'>{log.eventType}</span>
+                        </td>
+                        <td className='p-3 whitespace-nowrap'>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badgeClass}`}>
+                            {log.status}
+                          </span>
+                        </td>
+                        <td className='p-3 text-center whitespace-nowrap font-mono text-muted-foreground'>
+                          {log.attempt}
+                        </td>
+                        <td className='p-3 min-w-[200px] max-w-[280px]'>
+                          <span
+                            className='block truncate text-[11px] text-muted-foreground font-mono'
+                            title={log.errorMsg || '-'}
+                          >
+                            {log.errorMsg || '-'}
+                          </span>
+                        </td>
+                        <td className='p-3 text-right pr-4 whitespace-nowrap'>
+                          <div className='inline-flex items-center justify-end gap-1.5'>
                             <Button
                               size='sm'
                               variant='outline'
-                              className='h-7 px-2 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 dark:border-rose-900'
-                              onClick={() => handleRetry(log.id)}
-                              title='Coba Kirim Ulang'
+                              className='h-7 px-2.5 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:hover:bg-blue-950/40 shadow-xs'
+                              onClick={() => handleOpenDetail(log)}
+                              title='Lihat Detail & Analisa'
                             >
-                              <RotateCcw className='mr-1 h-3 w-3' /> Retry
+                              <Eye className='mr-1 h-3.5 w-3.5' /> Detail
                             </Button>
-                          )}
-                          <Button
-                            size='sm'
-                            variant='ghost'
-                            className='h-7 w-7 p-0 text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40'
-                            onClick={() => promptDeleteSingle(log.id)}
-                            title='Hapus Log Ini'
-                          >
-                            <Trash2 className='h-3.5 w-3.5' />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
+                            {log.status === 'FAILED' && (
+                              <Button
+                                size='sm'
+                                variant='outline'
+                                className='h-7 px-2 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 dark:border-rose-900 shadow-xs'
+                                onClick={() => handleRetry(log.id)}
+                                title='Coba Kirim Ulang'
+                              >
+                                <RotateCcw className='mr-1 h-3 w-3' /> Retry
+                              </Button>
+                            )}
+                            <Button
+                              size='sm'
+                              variant='ghost'
+                              className='h-7 w-7 p-0 text-xs text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+                              onClick={() => promptDeleteSingle(log.id)}
+                              title='Hapus Log Ini'
+                            >
+                              <Trash2 className='h-3.5 w-3.5' />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
