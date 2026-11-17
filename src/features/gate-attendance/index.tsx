@@ -3,6 +3,7 @@ import { format } from 'date-fns'
 import { type ColumnDef } from '@tanstack/react-table'
 import { toast } from 'sonner'
 import api from '@/lib/api'
+import { getServerTime } from '@/lib/server-time'
 import { GenericDataTable } from '@/components/data-table'
 import { DataTableColumnHeader } from '@/components/data-table/column-header'
 import { Header } from '@/components/layout/header'
@@ -104,7 +105,7 @@ export function GateAttendance() {
 
   // Filters
   const [selectedDate, setSelectedDate] = useState<string>(
-    format(new Date(), 'yyyy-MM-dd')
+    format(getServerTime(), 'yyyy-MM-dd')
   )
   const [selectedClassId, setSelectedClassId] = useState<string>('ALL')
   const [searchQuery, setSearchQuery] = useState('')
@@ -143,7 +144,7 @@ export function GateAttendance() {
       if (resUsers.data.success) {
         setUsersList(resUsers.data.data)
       }
-      setLastUpdated(format(new Date(), 'HH:mm:ss'))
+      setLastUpdated(format(getServerTime(), 'HH:mm:ss'))
     } catch (_error) {
       if (isManual) toast.error('Gagal memuat data absensi gerbang')
     } finally {
@@ -153,7 +154,14 @@ export function GateAttendance() {
   }, [selectedDate])
 
   useEffect(() => {
-    fetchData()
+    let isMounted = true
+    const load = async () => {
+      if (isMounted) await fetchData()
+    }
+    load()
+    return () => {
+      isMounted = false
+    }
   }, [fetchData])
 
   // Real-time polling every 10 seconds
@@ -901,7 +909,7 @@ export function GateAttendance() {
                     variant='outline'
                     size='sm'
                     type='button'
-                    onClick={() => setSelectedDate(format(new Date(), 'yyyy-MM-dd'))}
+                    onClick={() => setSelectedDate(format(getServerTime(), 'yyyy-MM-dd'))}
                     title='Kembali ke hari ini'
                     className='px-2.5 text-xs'
                   >

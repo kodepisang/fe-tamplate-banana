@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
 import api from '@/lib/api'
+import { getServerTime } from '@/lib/server-time'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ProfileDropdown } from '@/components/profile-dropdown'
@@ -89,7 +90,7 @@ export function EventAttendanceView() {
 
   // Filters
   const [selectedDate, setSelectedDate] = useState<string>(
-    format(new Date(), 'yyyy-MM-dd')
+    format(getServerTime(), 'yyyy-MM-dd')
   )
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null)
   const [selectedClassId, setSelectedClassId] = useState<string>('ALL')
@@ -140,7 +141,7 @@ export function EventAttendanceView() {
           if (!selectedEventId && data.currentEvent) {
             setSelectedEventId(data.currentEvent.id)
           }
-          setLastUpdated(format(new Date(), 'HH:mm:ss'))
+          setLastUpdated(format(getServerTime(), 'HH:mm:ss'))
         }
       } catch (_err) {
         if (isManual) toast.error('Gagal memperbarui data presensi kegiatan')
@@ -154,7 +155,14 @@ export function EventAttendanceView() {
 
   // Initial and reactive fetch
   useEffect(() => {
-    fetchDashboard()
+    let isMounted = true
+    const load = async () => {
+      if (isMounted) await fetchDashboard()
+    }
+    load()
+    return () => {
+      isMounted = false
+    }
   }, [fetchDashboard])
 
   // Real-time polling (every 10 seconds if auto-refresh is active and viewing today)
@@ -571,7 +579,7 @@ export function EventAttendanceView() {
                     variant='outline'
                     size='sm'
                     type='button'
-                    onClick={() => setSelectedDate(format(new Date(), 'yyyy-MM-dd'))}
+                    onClick={() => setSelectedDate(format(getServerTime(), 'yyyy-MM-dd'))}
                     title='Kembali ke hari ini'
                     className='px-2.5 text-xs'
                   >

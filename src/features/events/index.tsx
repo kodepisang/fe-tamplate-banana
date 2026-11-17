@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import api from '@/lib/api'
+import { useServerTime } from '@/lib/server-time'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -37,7 +38,31 @@ export interface EventLogItem {
   }
 }
 
+// Helper to convert "HH:mm" to minutes
+const parseTimeToMinutes = (timeStr?: string | null): number | null => {
+  if (!timeStr) return null
+  const parts = timeStr.trim().split(':')
+  if (parts.length < 2) return null
+  const h = parseInt(parts[0], 10)
+  const m = parseInt(parts[1], 10)
+  if (isNaN(h) || isNaN(m)) return null
+  return h * 60 + m
+}
+
+const isEventActiveNow = (evt: EventItem, date: Date): boolean => {
+  const start = parseTimeToMinutes(evt.startTime)
+  const end = parseTimeToMinutes(evt.endTime)
+  if (start === null || end === null) return false
+
+  const current = date.getHours() * 60 + date.getMinutes()
+  if (start <= end) {
+    return current >= start && current <= end
+  }
+  return current >= start || current <= end
+}
+
 export function ManagementEvents() {
+  const currentTime = useServerTime(10000)
   const [events, setEvents] = useState<EventItem[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -82,6 +107,20 @@ export function ManagementEvents() {
       isMounted = false
     }
   }, [])
+
+  const handleToggleActive = async (evt: EventItem) => {
+    try {
+      const nextActive = !evt.isActive
+      const res = await api.put(`/events/${evt.id}`, { isActive: nextActive })
+      if (res.data.success) {
+        toast.success(`Kegiatan "${evt.name}" diubah menjadi ${nextActive ? 'Aktif' : 'Non-Aktif'}`)
+        setEvents((prev) => prev.map((e) => (e.id === evt.id ? { ...e, isActive: nextActive } : e)))
+      }
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } }
+      toast.error(err.response?.data?.message || 'Gagal mengubah status kegiatan')
+    }
+  }
 
   const fetchEvents = async () => {
     try {
@@ -233,19 +272,37 @@ export function ManagementEvents() {
         </Card>
       ) : (
         <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
-          {events.map((evt) => (
-            <Card key={evt.id} className='relative overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow'>
-              <CardHeader className='pb-3'>
-                <div className='flex items-start justify-between gap-2'>
-                  <CardTitle className='text-base font-bold line-clamp-1'>{evt.name}</CardTitle>
-                  <Badge variant={evt.isActive ? 'default' : 'secondary'} className='text-[10px]'>
-                    {evt.isActive ? 'Aktif' : 'Non-Aktif'}
-                  </Badge>
-                </div>
-                <CardDescription className='text-xs line-clamp-2 mt-1'>
-                  {evt.description || 'Tidak ada deskripsi kegiatan.'}
-                </CardDescription>
-              </CardHeader>
+          {events.map((evt) => {
+            const isOngoingNow = isEventActiveNow(evt, currentTime)
+
+            return (
+              <Card key={evt.id} className='relative overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow'>
+                <CardHeader className='pb-3'>
+                  <div className='flex items-start justify-between gap-2'>
+                    <div className='min-w-0 flex-1'>
+                      <CardTitle className='text-base font-bold line-clamp-1'>{evt.name}</CardTitle>
+                      {isOngoingNow && evt.isActive && (
+                        <span className='inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded mt-1 border border-emerald-500/20'>
+                          <span className='h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse' />
+                          Sedang Berlangsung (Sesuai Jam)
+                        </span>
+                      )}
+                    </div>
+                    <div className='flex items-center gap-1.5 shrink-0'>
+                      <Switch
+                        checked={evt.isActive}
+                        onCheckedChange={() => handleToggleActive(evt)}
+                        title={evt.isActive ? 'Klik untuk non-aktifkan' : 'Klik untuk aktifkan'}
+                      />
+                      <Badge variant={evt.isActive ? 'default' : 'secondary'} className='text-[10px]'>
+                        {evt.isActive ? 'Aktif' : 'Non-Aktif'}
+                      </Badge>
+                    </div>
+                  </div>
+                  <CardDescription className='text-xs line-clamp-2 mt-1'>
+                    {evt.description || 'Tidak ada deskripsi kegiatan.'}
+                  </CardDescription>
+                </CardHeader>
               <CardContent className='space-y-3 pt-0 text-xs'>
                 <div className='flex items-center justify-between text-muted-foreground border-y py-2'>
                   <span>Waktu / Jam:</span>
@@ -273,7 +330,7 @@ export function ManagementEvents() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+          )})}
         </div>
       )}
 

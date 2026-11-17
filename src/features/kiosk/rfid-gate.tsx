@@ -3,6 +3,7 @@ import { format } from 'date-fns'
 import { id } from 'date-fns/locale'
 import { CheckCircle2, XCircle, AlertTriangle, Maximize, Minimize } from 'lucide-react'
 import api from '@/lib/api'
+import { useServerTime } from '@/lib/server-time'
 import { Card } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import schoolLogo from '@/assets/logo.png'
@@ -18,7 +19,8 @@ interface StudentData {
 }
 
 export function RfidGate() {
-  const [time, setTime] = useState(new Date())
+  // Synchronized real-time clock strictly following server time (Asia/Jakarta)
+  const time = useServerTime(1000)
   const [inputValue, setInputValue] = useState('')
   const [isFullscreen, setIsFullscreen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -28,11 +30,6 @@ export function RfidGate() {
   >('idle')
   const [message, setMessage] = useState('Silakan Tap Kartu Pelajar Anda')
   const [studentData, setStudentData] = useState<StudentData | null>(null)
-
-  useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000)
-    return () => clearInterval(timer)
-  }, [])
 
   useEffect(() => {
     const handleFullscreenChange = () => {

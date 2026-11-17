@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { format } from 'date-fns'
 import { id } from 'date-fns/locale'
-import { CheckCircle2, ScanLine, AlertCircle, Sparkles, RefreshCw, Maximize, Minimize, Calendar } from 'lucide-react'
+import { CheckCircle2, ScanLine, AlertCircle, Sparkles, RefreshCw, Maximize, Minimize, Calendar, Clock } from 'lucide-react'
 import api from '@/lib/api'
+import { useServerTime } from '@/lib/server-time'
 import { cn } from '@/lib/utils'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -26,10 +27,82 @@ interface TapResultData {
   tapTime: string
 }
 
+// Helper to convert "HH:mm" to total minutes from start of day
+const parseTimeToMinutes = (timeStr?: string | null): number | null => {
+  if (!timeStr) return null
+  const parts = timeStr.trim().split(':')
+  if (parts.length < 2) return null
+  const h = parseInt(parts[0], 10)
+  const m = parseInt(parts[1], 10)
+  if (isNaN(h) || isNaN(m)) return null
+  return h * 60 + m
+}
+
+// Check if current date/time is within event's scheduled window
+const isEventActiveNow = (evt: EventOption, date: Date): boolean => {
+  const start = parseTimeToMinutes(evt.startTime)
+  const end = parseTimeToMinutes(evt.endTime)
+  if (start === null || end === null) return false
+
+  const current = date.getHours() * 60 + date.getMinutes()
+  if (start <= end) {
+    return current >= start && current <= end
+  }
+  // Overnight event support (e.g. 23:00 to 01:00)
+  return current >= start || current <= end
+}
+
+// Format status label & badge
+const getEventScheduleStatus = (evt: EventOption, date: Date) => {
+  const start = parseTimeToMinutes(evt.startTime)
+  const end = parseTimeToMinutes(evt.endTime)
+  if (start === null || end === null) {
+    return {
+      isActiveNow: false,
+      status: 'none' as const,
+      label: 'Waktu Bebas',
+    }
+  }
+
+  const current = date.getHours() * 60 + date.getMinutes()
+  const isNow = start <= end ? current >= start && current <= end : current >= start || current <= end
+
+  if (isNow) {
+    return {
+      isActiveNow: true,
+      status: 'active' as const,
+      label: 'Sedang Berlangsung',
+    }
+  }
+
+  if (start <= end) {
+    if (current < start) {
+      return {
+        isActiveNow: false,
+        status: 'upcoming' as const,
+        label: `Mulai ${evt.startTime}`,
+      }
+    }
+    return {
+      isActiveNow: false,
+      status: 'ended' as const,
+      label: `Selesai (${evt.endTime})`,
+    }
+  }
+
+  return {
+    isActiveNow: false,
+    status: 'upcoming' as const,
+    label: `Mulai ${evt.startTime}`,
+  }
+}
+
 export function EventKiosk() {
-  const [time, setTime] = useState(new Date())
+  // Synchronized real-time clock strictly following server time (Asia/Jakarta)
+  const time = useServerTime(1000)
   const [events, setEvents] = useState<EventOption[]>([])
-  const [selectedEventId, setSelectedEventId] = useState<string>('')
+  // Manual selection override by user (null = Auto Schedule Mode according to clock)
+  const [manualSelectedEventId, setManualSelectedEventId] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState('')
   const [isFullscreen, setIsFullscreen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -39,10 +112,29 @@ export function EventKiosk() {
   const [tapResult, setTapResult] = useState<TapResultData | null>(null)
   const [recentLogs, setRecentLogs] = useState<TapResultData[]>([])
 
-  useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000)
-    return () => clearInterval(timer)
+  // Sort events chronologically by start time
+  const sortEvents = useCallback((list: EventOption[]) => {
+    return [...list].sort((a, b) => {
+      const aStart = parseTimeToMinutes(a.startTime) ?? 9999
+      const bStart = parseTimeToMinutes(b.startTime) ?? 9999
+      return aStart - bStart
+    })
   }, [])
+
+  // Current active event automatically evaluated against the real-time clock
+  const scheduledActiveEvent = useMemo(() => {
+    return events.find((evt) => isEventActiveNow(evt, time))
+  }, [events, time])
+
+  // Active selected event: manual override if set, or auto scheduled event
+  const selectedEventId = useMemo(() => {
+    if (manualSelectedEventId !== null) {
+      return manualSelectedEventId
+    }
+    return scheduledActiveEvent ? scheduledActiveEvent.id.toString() : ''
+  }, [manualSelectedEventId, scheduledActiveEvent])
+
+  const isManualOverride = manualSelectedEventId !== null
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -60,19 +152,16 @@ export function EventKiosk() {
     }
   }
 
-  const fetchActiveEvents = async () => {
+  const fetchActiveEvents = useCallback(async () => {
     try {
       const res = await api.get('/events?active=true')
       if (res.data.success) {
-        setEvents(res.data.data)
-        if (res.data.data.length > 0 && !selectedEventId) {
-          setSelectedEventId(res.data.data[0].id.toString())
-        }
+        setEvents(sortEvents(res.data.data))
       }
     } catch (_err) {
       // silent
     }
-  }
+  }, [sortEvents])
 
   useEffect(() => {
     let isMounted = true
@@ -80,10 +169,7 @@ export function EventKiosk() {
       try {
         const res = await api.get('/events?active=true')
         if (res.data.success && isMounted) {
-          setEvents(res.data.data)
-          if (res.data.data.length > 0) {
-            setSelectedEventId((prev) => prev || res.data.data[0].id.toString())
-          }
+          setEvents(sortEvents(res.data.data))
         }
       } catch (_err) {
         // silent
@@ -93,7 +179,15 @@ export function EventKiosk() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [sortEvents])
+
+  // Periodic background refresh every 30 seconds to keep events updated
+  useEffect(() => {
+    const pollInterval = setInterval(() => {
+      fetchActiveEvents()
+    }, 30000)
+    return () => clearInterval(pollInterval)
+  }, [fetchActiveEvents])
 
   useEffect(() => {
     const focusInput = () => {
@@ -111,13 +205,31 @@ export function EventKiosk() {
     audio.play().catch(() => {})
   }
 
+  // Toggle event manual override / click
+  const handleToggleEvent = (evtId: number) => {
+    const idStr = evtId.toString()
+    if (selectedEventId === idStr) {
+      // Turn off this event
+      setManualSelectedEventId('')
+    } else {
+      // Turn on this event
+      setManualSelectedEventId(idStr)
+    }
+  }
+
+  // Reset to auto schedule mode based on current time
+  const handleResetToAuto = () => {
+    setManualSelectedEventId(null)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!inputValue.trim()) return
 
     if (!selectedEventId) {
       setStatus('warning')
-      setMessage('Harap pilih kegiatan / event terlebih dahulu!')
+      playAudio('error')
+      setMessage('Tidak ada kegiatan aktif saat ini! Harap tunggu jam kegiatan atau aktifkan kegiatan secara manual.')
       setInputValue('')
       return
     }
@@ -161,7 +273,10 @@ export function EventKiosk() {
     }, 5000)
   }
 
-  const activeEventObj = events.find((e) => e.id.toString() === selectedEventId)
+  const activeEventObj = useMemo(
+    () => events.find((e) => e.id.toString() === selectedEventId),
+    [events, selectedEventId]
+  )
 
   const getStatusConfig = () => {
     switch (status) {
@@ -255,6 +370,32 @@ export function EventKiosk() {
                 </div>
               </div>
 
+              {/* Mode Status Pill */}
+              <div className='flex items-center justify-between px-1 text-xs'>
+                {!isManualOverride ? (
+                  <span className='inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full'>
+                    <span className='relative flex h-2 w-2'>
+                      <span className='animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75'></span>
+                      <span className='relative inline-flex rounded-full h-2 w-2 bg-emerald-500'></span>
+                    </span>
+                    Otomatis Sesuai Jam
+                  </span>
+                ) : (
+                  <button
+                    type='button'
+                    onClick={handleResetToAuto}
+                    className='inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-400 hover:text-amber-800 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-full cursor-pointer transition-colors'
+                    title='Kembali ke pemilihan otomatis sesuai jam saat ini'
+                  >
+                    <Clock className='h-3 w-3' />
+                    Mode Manual • Klik untuk Otomatis Jam
+                  </button>
+                )}
+                <span className='text-[10px] text-slate-400 font-mono'>
+                  {format(time, 'HH:mm:ss')} WIB
+                </span>
+              </div>
+
               {/* Button Toggle Selector */}
               {events.length === 0 ? (
                 <div className='p-3 text-center rounded-xl bg-slate-100/60 dark:bg-slate-950/60 border border-dashed border-slate-200 dark:border-slate-800 text-xs text-slate-500'>
@@ -264,16 +405,16 @@ export function EventKiosk() {
                   </Link>
                 </div>
               ) : (
-                <div className='flex flex-col gap-2 max-h-52 overflow-y-auto pr-0.5'>
+                <div className='flex flex-col gap-2 max-h-56 overflow-y-auto pr-0.5'>
                   {events.map((evt) => {
                     const isSelected = selectedEventId === evt.id.toString()
+                    const schedule = getEventScheduleStatus(evt, time)
+
                     return (
                       <button
                         key={evt.id}
                         type='button'
-                        onClick={() =>
-                          setSelectedEventId((prev) => (prev === evt.id.toString() ? '' : evt.id.toString()))
-                        }
+                        onClick={() => handleToggleEvent(evt.id)}
                         className={cn(
                           'w-full flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-left border transition-all duration-200 cursor-pointer select-none',
                           isSelected
@@ -281,13 +422,31 @@ export function EventKiosk() {
                             : 'bg-white/80 dark:bg-slate-950/80 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-900'
                         )}
                       >
-                        <div className='flex flex-col min-w-0'>
-                          <span className={cn('text-sm font-bold truncate', isSelected && 'text-emerald-700 dark:text-emerald-300')}>
-                            {evt.name}
-                          </span>
+                        <div className='flex flex-col min-w-0 flex-1'>
+                          <div className='flex items-center gap-2 flex-wrap'>
+                            <span className={cn('text-sm font-bold truncate', isSelected && 'text-emerald-700 dark:text-emerald-300')}>
+                              {evt.name}
+                            </span>
+                            {/* Schedule Status Badge */}
+                            {schedule.status === 'active' && (
+                              <span className='inline-flex items-center text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'>
+                                Sesuai Jam
+                              </span>
+                            )}
+                            {schedule.status === 'upcoming' && (
+                              <span className='inline-flex items-center text-[9px] px-1.5 py-0.2 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'>
+                                {schedule.label}
+                              </span>
+                            )}
+                            {schedule.status === 'ended' && (
+                              <span className='inline-flex items-center text-[9px] px-1.5 py-0.2 rounded-md bg-slate-200/50 dark:bg-slate-800/50 text-slate-400 line-through'>
+                                {schedule.label}
+                              </span>
+                            )}
+                          </div>
                           {evt.startTime && (
-                            <span className='text-[11px] text-slate-500 dark:text-slate-400 font-mono'>
-                              {evt.startTime}{evt.endTime ? ` - ${evt.endTime}` : ''}
+                            <span className='text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5'>
+                              {evt.startTime}{evt.endTime ? ` - ${evt.endTime}` : ''} WIB
                             </span>
                           )}
                         </div>
@@ -319,6 +478,22 @@ export function EventKiosk() {
                       </button>
                     )
                   })}
+                </div>
+              )}
+
+              {/* Helper text on current active state */}
+              {activeEventObj ? (
+                <div className='pt-1 text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center justify-between px-1'>
+                  <span className='truncate'>
+                    Kegiatan: <strong>{activeEventObj.name}</strong>
+                  </span>
+                  <span className='shrink-0 text-[10px] font-semibold text-slate-400'>
+                    {isManualOverride ? '(Manual)' : '(Otomatis Jam)'}
+                  </span>
+                </div>
+              ) : (
+                <div className='pt-1 text-[11px] text-amber-600 dark:text-amber-400 italic px-1'>
+                  Tidak ada kegiatan aktif sesuai jam saat ini ({format(time, 'HH:mm')} WIB).
                 </div>
               )}
             </div>
@@ -390,13 +565,25 @@ export function EventKiosk() {
               <div className='mt-2 space-y-2 text-slate-400 dark:text-slate-500'>
                 <p className='text-sm'>Tempelkan kartu RFID siswa pada scanner</p>
                 {activeEventObj ? (
-                  <p className='text-xs text-emerald-600 dark:text-emerald-400 font-semibold'>
-                    Kegiatan Aktif: {activeEventObj.name}
-                  </p>
+                  <div className='space-y-0.5'>
+                    <p className='text-xs text-emerald-600 dark:text-emerald-400 font-semibold'>
+                      Kegiatan Aktif: {activeEventObj.name}
+                    </p>
+                    {activeEventObj.startTime && (
+                      <p className='text-[11px] text-slate-500 font-mono'>
+                        Jadwal: {activeEventObj.startTime}{activeEventObj.endTime ? ` - ${activeEventObj.endTime}` : ''} WIB {isManualOverride ? '(Override Manual)' : '(Sesuai Jam)'}
+                      </p>
+                    )}
+                  </div>
                 ) : (
-                  <p className='text-xs text-amber-500 dark:text-amber-400 font-semibold'>
-                    Belum ada kegiatan yang diaktifkan
-                  </p>
+                  <div className='space-y-0.5'>
+                    <p className='text-xs text-amber-500 dark:text-amber-400 font-semibold'>
+                      Belum ada kegiatan aktif pada jam ini ({format(time, 'HH:mm')} WIB)
+                    </p>
+                    <p className='text-[11px] text-slate-400 dark:text-slate-500'>
+                      Toggle aktif otomatis saat jam kegiatan dimulai, atau aktifkan manual kegiatan di sebelah kiri
+                    </p>
+                  </div>
                 )}
               </div>
             )}
